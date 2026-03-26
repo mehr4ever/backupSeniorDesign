@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/mehrmangat/SensorAlgorithm/build/Debug/cmake_install.cmake",
+		"/Users/mehrmangat/SensorAlgorithm/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
