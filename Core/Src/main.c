@@ -51,6 +51,8 @@ char global_intensity[15] = "Off";
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 
+SPI_HandleTypeDef hspi1;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -62,6 +64,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -102,86 +105,18 @@ int main(void)
   MX_GPIO_Init();
   MX_ADC1_Init();
   MX_USART2_UART_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
-/* Infinite loop */
-/* --- GLOBAL VARIABLES (Declare these at the top of main.c, outside of main) --- */
-/* These are visible to other subsystems and the Debugger Expressions window */
 
-
-/* --- INSIDE THE MAIN WHILE(1) LOOP --- */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
   while (1)
   {
-      // 1. Calculate time passed in seconds
-      uint32_t current_tick = HAL_GetTick();
-      seconds_elapsed = (current_tick - last_tick) / 1000.0f; 
-      last_tick = current_tick;
+    /* USER CODE END WHILE */
 
-      // 2. Read the Rain Sensor (D4)
-      GPIO_PinState rain_state = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
-      char msg[250];
-
-      if (rain_state == GPIO_PIN_RESET) 
-      {
-          // --- RAIN DETECTED ---
-          uint32_t total_vibration = 0;
-          uint16_t samples = 40; 
-
-          for (int i = 0; i < samples; i++) 
-          {
-              HAL_ADC_Start(&hadc1);
-              if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) 
-              {
-                  total_vibration += HAL_ADC_GetValue(&hadc1);
-              }
-              HAL_ADC_Stop(&hadc1);
-              HAL_Delay(50); 
-          }
-
-          uint32_t avg_vibration = total_vibration / samples;
-
-          // Update global variables for other subsystems
-          if (avg_vibration <= 50) { 
-              strcpy(global_intensity, "Off"); 
-              current_wiper_speed = 0; 
-          } 
-          else if (avg_vibration <= 500) { 
-              strcpy(global_intensity, "Low"); 
-              current_wiper_speed = 25; 
-          } 
-          else if (avg_vibration <= 1000) { 
-              strcpy(global_intensity, "Moderate"); 
-              current_wiper_speed = 50; 
-          } 
-          else { 
-              strcpy(global_intensity, "High"); 
-              current_wiper_speed = 75; 
-          }
-
-          sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | Water detected! | Avg AO: %lu | Intensity: %s | Recommended Speed: %d\r\n", 
-                  ++iteration, seconds_elapsed, (int)rain_state, avg_vibration, global_intensity, current_wiper_speed);
-          
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET); 
-      } 
-      else 
-      {
-          // --- NO RAIN ---
-          strcpy(global_intensity, "Off");
-          current_wiper_speed = 0;
-          
-          sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | No water detected, waiting... | Intensity: %s | Recommended Speed: %d\r\n", 
-                  ++iteration, seconds_elapsed, (int)rain_state, global_intensity, current_wiper_speed);
-          
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-          
-          HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-          HAL_Delay(2000); 
-          last_tick = HAL_GetTick(); // Keep time accurate after delay
-          continue; 
-      }
-
-      HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+    /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
@@ -285,7 +220,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
   */
-  sConfig.Channel = ADC_CHANNEL_4;
+  sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = 3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -294,7 +229,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
   */
-  sConfig.Channel = ADC_CHANNEL_8;
+  sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = 4;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -303,6 +238,44 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
 
 }
 
@@ -354,15 +327,34 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PA5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PB10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  GPIO_InitStruct.Mode = GPIO_MODE_EVT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PC7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_EVT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA9 */
@@ -371,10 +363,24 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PA10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pin : PB5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
