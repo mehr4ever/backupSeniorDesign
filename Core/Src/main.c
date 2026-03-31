@@ -21,6 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "fonts.h"
+#include "ili9341.h"
 #include <stdio.h>
 #include <string.h>
 volatile uint32_t iteration = 0;
@@ -66,7 +68,11 @@ static void MX_ADC1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void TFT_print(void);
+volatile uint32_t button_1_press_count = 0;
+volatile uint8_t button_pressed = 0;
+volatile uint32_t button_2_press_count = 0;
+volatile uint8_t button_pressed_2 = 0;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -107,7 +113,9 @@ int main(void)
   MX_USART2_UART_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-
+  ILI9341_Unselect();
+  ILI9341_Init();
+  TFT_print();
   /* USER CODE END 2 */
 
 /* Infinite loop */
@@ -118,6 +126,35 @@ int main(void)
 /* --- INSIDE THE MAIN WHILE(1) LOOP --- */
   while (1)
   {
+    if (button_pressed) {
+		button_pressed = 0;
+		if (button_1_press_count >= 6)
+		{
+			button_1_press_count = 0;
+		}
+		char buffer[8];
+		if (button_1_press_count == 0) {
+			ILI9341_WriteString(15, 180, "SPEED: OFF", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+		}
+		else {
+			sprintf(buffer, "SPEED: %ld", button_1_press_count);
+			ILI9341_WriteString(15, 180, buffer, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+			ILI9341_FillRectangle(143, 180, 100, 200, ILI9341_BLACK);
+		}
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
+	}
+	if (button_pressed_2) {
+		button_pressed_2 = 0;
+		if (button_2_press_count % 2)
+		{
+			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
+			ILI9341_WriteString(15, 120, "MODE : AUTO", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+		}
+		else {
+			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
+			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+		}
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
       // 1. Calculate time passed in seconds
       uint32_t current_tick = HAL_GetTick();
       seconds_elapsed = (current_tick - last_tick) / 1000.0f; 
@@ -459,7 +496,39 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == GPIO_PIN_8)
+	{
+		static uint32_t prev = 0;
+		uint32_t curr = HAL_GetTick();
+		if (curr - prev > 200)
+		{
+			button_1_press_count++;
+//			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
+			button_pressed = 1;
+			prev = curr;
+		}
+	}
+	else if(GPIO_Pin == GPIO_PIN_10)
+	{
+		static uint32_t prev = 0;
+		uint32_t curr = HAL_GetTick();
+		if (curr - prev > 200)
+		{
+			button_2_press_count++;
+		//	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
+			button_pressed_2 = 1;
+			prev = curr;
+		}
+	}
+}
+static void TFT_print(void)
+ {
+ 	ILI9341_FillScreen(ILI9341_BLACK);
+ 	ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+ 	ILI9341_WriteString(15, 180, "SPEED : OFF", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+ }
 /* USER CODE END 4 */
 
 /**
