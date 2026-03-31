@@ -110,13 +110,83 @@ int main(void)
 
   /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+/* Infinite loop */
+/* --- GLOBAL VARIABLES (Declare these at the top of main.c, outside of main) --- */
+/* These are visible to other subsystems and the Debugger Expressions window */
+
+
+/* --- INSIDE THE MAIN WHILE(1) LOOP --- */
   while (1)
   {
-    /* USER CODE END WHILE */
+      // 1. Calculate time passed in seconds
+      uint32_t current_tick = HAL_GetTick();
+      seconds_elapsed = (current_tick - last_tick) / 1000.0f; 
+      last_tick = current_tick;
 
-    /* USER CODE BEGIN 3 */
+      // 2. Read the Rain Sensor (D4)
+      GPIO_PinState rain_state = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
+      char msg[250];
+
+      if (rain_state == GPIO_PIN_RESET) 
+      {
+          // --- RAIN DETECTED ---
+          uint32_t total_vibration = 0;
+          uint16_t samples = 40; 
+
+          for (int i = 0; i < samples; i++) 
+          {
+              HAL_ADC_Start(&hadc1);
+              if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) 
+              {
+                  total_vibration += HAL_ADC_GetValue(&hadc1);
+              }
+              HAL_ADC_Stop(&hadc1);
+              HAL_Delay(50); 
+          }
+
+          uint32_t avg_vibration = total_vibration / samples;
+
+          // Update global variables for other subsystems
+          if (avg_vibration <= 50) { 
+              strcpy(global_intensity, "Off"); 
+              current_wiper_speed = 0; 
+          } 
+          else if (avg_vibration <= 500) { 
+              strcpy(global_intensity, "Low"); 
+              current_wiper_speed = 25; 
+          } 
+          else if (avg_vibration <= 1000) { 
+              strcpy(global_intensity, "Moderate"); 
+              current_wiper_speed = 50; 
+          } 
+          else { 
+              strcpy(global_intensity, "High"); 
+              current_wiper_speed = 75; 
+          }
+
+          sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | Water detected! | Avg AO: %lu | Intensity: %s | Recommended Speed: %d\r\n", 
+                  ++iteration, seconds_elapsed, (int)rain_state, avg_vibration, global_intensity, current_wiper_speed);
+          
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET); 
+      } 
+      else 
+      {
+          // --- NO RAIN ---
+          strcpy(global_intensity, "Off");
+          current_wiper_speed = 0;
+          
+          sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | No water detected, waiting... | Intensity: %s | Recommended Speed: %d\r\n", 
+                  ++iteration, seconds_elapsed, (int)rain_state, global_intensity, current_wiper_speed);
+          
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+          
+          HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+          HAL_Delay(2000); 
+          last_tick = HAL_GetTick(); // Keep time accurate after delay
+          continue; 
+      }
+
+      HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
   }
   /* USER CODE END 3 */
 }
