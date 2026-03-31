@@ -155,6 +155,7 @@ int main(void)
 			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
 		}
 		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
+  }
       // 1. Calculate time passed in seconds
       uint32_t current_tick = HAL_GetTick();
       seconds_elapsed = (current_tick - last_tick) / 1000.0f; 
