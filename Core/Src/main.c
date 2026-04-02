@@ -149,13 +149,6 @@ int main(void)
 		{
 			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
 			ILI9341_WriteString(15, 120, "MODE : AUTO", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-		}
-		else {
-			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
-			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-		}
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
-  }
       // 1. Calculate time passed in seconds
       uint32_t current_tick = HAL_GetTick();
       seconds_elapsed = (current_tick - last_tick) / 1000.0f; 
@@ -225,6 +218,13 @@ int main(void)
       }
 
       HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+		}
+		else {
+			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
+			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+		}
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
+  }
   }
   /* USER CODE END 3 */
 }
@@ -461,7 +461,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PA8 */
   GPIO_InitStruct.Pin = GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_EVT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
