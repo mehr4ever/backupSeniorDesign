@@ -34,6 +34,45 @@ volatile int current_wiper_speed = 0;
 char global_intensity[15] = "Off"; 
 uint8_t automaticMode = 0;
 
+
+// CAN code
+void SysTick_Handler(void) { HAL_IncTick(); }
+void Error_Handler(void) { while (1) {} }
+CAN_HandleTypeDef hcan1;
+
+void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    if (hcan->Instance == CAN1) {
+        __HAL_RCC_CAN1_CLK_ENABLE();
+        __HAL_RCC_GPIOB_CLK_ENABLE();
+        GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    } 
+}
+
+static void MX_CAN1_Init(void) {
+    hcan1.Instance = CAN1;
+    hcan1.Init.Prescaler = 9;
+    hcan1.Init.Mode = CAN_MODE_NORMAL;
+    hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+    hcan1.Init.TimeSeg1 = CAN_BS1_12TQ;
+    hcan1.Init.TimeSeg2 = CAN_BS2_3TQ;
+    hcan1.Init.TimeTriggeredMode = DISABLE;
+    hcan1.Init.AutoBusOff = DISABLE;
+    hcan1.Init.AutoWakeUp = DISABLE;
+    hcan1.Init.AutoRetransmission = ENABLE;
+    hcan1.Init.ReceiveFifoLocked = DISABLE;
+    hcan1.Init.TransmitFifoPriority = DISABLE;
+    HAL_CAN_Init(&hcan1);
+}
+
+
+
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
