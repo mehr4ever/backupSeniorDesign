@@ -37,7 +37,7 @@ uint8_t automaticMode = 0;
 
 // CAN code
 void SysTick_Handler(void) { HAL_IncTick(); }
-void Error_Handler(void) { while (1) {} }
+//void Error_Handler(void) { while (1) {} }
 CAN_HandleTypeDef hcan1;
 
 void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
@@ -161,18 +161,18 @@ int main(void)
 
   // CAN TX init
   MX_CAN1_Init();
-  CAN_FilterTypeDef filter;
-  filter.FilterBank = 14;
-  filter.FilterMode = CAN_FILTERMODE_IDMASK;
-  filter.FilterScale = CAN_FILTERSCALE_32BIT;
-  filter.FilterIdHigh = 0x0000;
-  filter.FilterIdLow = 0x0000;
-  filter.FilterMaskIdHigh = 0x0000;
-  filter.FilterMaskIdLow = 0x0000;
-  filter.FilterFIFOAssignment = CAN_RX_FIFO0;
-  filter.FilterActivation = ENABLE;
-  filter.SlaveStartFilterBank = 14;
-  HAL_CAN_ConfigFilter(&hcan2, &filter);
+  // CAN_FilterTypeDef filter;
+  // filter.FilterBank = 14;
+  // filter.FilterMode = CAN_FILTERMODE_IDMASK;
+  // filter.FilterScale = CAN_FILTERSCALE_32BIT;
+  // filter.FilterIdHigh = 0x0000;
+  // filter.FilterIdLow = 0x0000;
+  // filter.FilterMaskIdHigh = 0x0000;
+  // filter.FilterMaskIdLow = 0x0000;
+  // filter.FilterFIFOAssignment = CAN_RX_FIFO0;
+  // filter.FilterActivation = ENABLE;
+  // filter.SlaveStartFilterBank = 14;
+  
 
   HAL_CAN_Start(&hcan1);
 
