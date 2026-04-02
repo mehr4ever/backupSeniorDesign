@@ -32,6 +32,7 @@ volatile float seconds_elapsed = 0.0f;
 // Variables for other subsystems to read
 volatile int current_wiper_speed = 0;
 char global_intensity[15] = "Off"; 
+uint8_t automaticMode = 0;
 
 /* USER CODE END Includes */
 
@@ -147,22 +148,26 @@ int main(void)
 		button_pressed_2 = 0;
 		if (button_2_press_count % 2)
 		{
+      automaticMode = 1;
 			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
 			ILI9341_WriteString(15, 120, "MODE : AUTO", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-      // 1. Calculate time passed in seconds
-      uint32_t current_tick = HAL_GetTick();
-      seconds_elapsed = (current_tick - last_tick) / 1000.0f; 
-      last_tick = current_tick;
+		}
+		else {
+      automaticMode = 0;
+			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
+			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+		}
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
+  }
 
-      // 2. Read the Rain Sensor (D4)
-      GPIO_PinState rain_state = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
+  if (automaticMode) {
+      GPIO_PinState rainState = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
       char msg[250];
 
-      if (rain_state == GPIO_PIN_RESET) 
-      {
+      if (rainState == GPIO_PIN_RESET) {
           // --- RAIN DETECTED ---
           uint32_t total_vibration = 0;
-          uint16_t samples = 40; 
+          uint16_t samples = 10; 
 
           for (int i = 0; i < samples; i++) 
           {
@@ -172,9 +177,8 @@ int main(void)
                   total_vibration += HAL_ADC_GetValue(&hadc1);
               }
               HAL_ADC_Stop(&hadc1);
-              HAL_Delay(50); 
+              HAL_Delay(5); 
           }
-
           uint32_t avg_vibration = total_vibration / samples;
 
           // Update global variables for other subsystems
@@ -196,8 +200,7 @@ int main(void)
           }
 
           sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | Water detected! | Avg AO: %lu | Intensity: %s | Recommended Speed: %d\r\n", 
-                  ++iteration, seconds_elapsed, (int)rain_state, avg_vibration, global_intensity, current_wiper_speed);
-          
+                  ++iteration, seconds_elapsed, (int)rainState, avg_vibration, global_intensity, current_wiper_speed);
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET); 
       } 
       else 
@@ -207,23 +210,15 @@ int main(void)
           current_wiper_speed = 0;
           
           sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | No water detected, waiting... | Intensity: %s | Recommended Speed: %d\r\n", 
-                  ++iteration, seconds_elapsed, (int)rain_state, global_intensity, current_wiper_speed);
+                  ++iteration, seconds_elapsed, (int)rainState, global_intensity, current_wiper_speed);
           
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-          
-          HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-          HAL_Delay(2000); 
-          last_tick = HAL_GetTick(); // Keep time accurate after delay
-          continue; 
       }
 
-      HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-		}
-		else {
-			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
-			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-		}
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
+
+      if (iteration % 500 == 0) {
+        HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+      }
   }
   }
   /* USER CODE END 3 */
@@ -429,7 +424,13 @@ static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* Enable Interrupt for PA8 (Button 1) */
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0); // Priority 2 (lower than Systick)
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
+  /* Enable Interrupt for PB10 (Button 2) */
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0); // Priority 2
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
@@ -448,7 +449,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PB10 */
   GPIO_InitStruct.Pin = GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_EVT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
