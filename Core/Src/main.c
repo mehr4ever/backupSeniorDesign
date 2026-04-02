@@ -36,23 +36,8 @@ uint8_t automaticMode = 0;
 
 
 // CAN code
-void SysTick_Handler(void) { HAL_IncTick(); }
-//void Error_Handler(void) { while (1) {} }
 CAN_HandleTypeDef hcan1;
 
-void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    if (hcan->Instance == CAN1) {
-        __HAL_RCC_CAN1_CLK_ENABLE();
-        __HAL_RCC_GPIOB_CLK_ENABLE();
-        GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
-        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-        GPIO_InitStruct.Pull = GPIO_NOPULL;
-        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
-        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-    } 
-}
 
 static void MX_CAN1_Init(void) {
     hcan1.Instance = CAN1;
@@ -161,18 +146,18 @@ int main(void)
 
   // CAN TX init
   MX_CAN1_Init();
-  // CAN_FilterTypeDef filter;
-  // filter.FilterBank = 14;
-  // filter.FilterMode = CAN_FILTERMODE_IDMASK;
-  // filter.FilterScale = CAN_FILTERSCALE_32BIT;
-  // filter.FilterIdHigh = 0x0000;
-  // filter.FilterIdLow = 0x0000;
-  // filter.FilterMaskIdHigh = 0x0000;
-  // filter.FilterMaskIdLow = 0x0000;
-  // filter.FilterFIFOAssignment = CAN_RX_FIFO0;
-  // filter.FilterActivation = ENABLE;
-  // filter.SlaveStartFilterBank = 14;
-  
+  CAN_FilterTypeDef filter;
+  /*filter.FilterBank = 14;
+  filter.FilterMode = CAN_FILTERMODE_IDMASK;
+  filter.FilterScale = CAN_FILTERSCALE_32BIT;
+  filter.FilterIdHigh = 0x0000;
+  filter.FilterIdLow = 0x0000;
+  filter.FilterMaskIdHigh = 0x0000;
+  filter.FilterMaskIdLow = 0x0000;
+  filter.FilterFIFOAssignment = CAN_RX_FIFO0;
+  filter.FilterActivation = ENABLE;
+  filter.SlaveStartFilterBank = 14;
+  HAL_CAN_ConfigFilter(&hcan2, &filter); */
 
   HAL_CAN_Start(&hcan1);
 
@@ -569,6 +554,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
