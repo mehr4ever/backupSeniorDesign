@@ -156,7 +156,38 @@ int main(void)
   ILI9341_Unselect();
   ILI9341_Init();
   TFT_print();
+
   /* USER CODE END 2 */
+
+  // CAN TX init
+  MX_CAN1_Init();
+  CAN_FilterTypeDef filter;
+  filter.FilterBank = 14;
+  filter.FilterMode = CAN_FILTERMODE_IDMASK;
+  filter.FilterScale = CAN_FILTERSCALE_32BIT;
+  filter.FilterIdHigh = 0x0000;
+  filter.FilterIdLow = 0x0000;
+  filter.FilterMaskIdHigh = 0x0000;
+  filter.FilterMaskIdLow = 0x0000;
+  filter.FilterFIFOAssignment = CAN_RX_FIFO0;
+  filter.FilterActivation = ENABLE;
+  filter.SlaveStartFilterBank = 14;
+  HAL_CAN_ConfigFilter(&hcan2, &filter);
+
+  HAL_CAN_Start(&hcan1);
+
+  CAN_TxHeaderTypeDef TxHeader;
+  TxHeader.StdId = 0x123;
+  TxHeader.ExtId = 0;
+  TxHeader.RTR = CAN_RTR_DATA;
+  TxHeader.IDE = CAN_ID_STD;
+  TxHeader.DLC = 8;
+  TxHeader.TransmitGlobalTime = DISABLE;
+
+  uint8_t TxData[8] = "HELLO!!!";
+  uint32_t TxMailbox;
+
+
 
 /* Infinite loop */
 /* --- GLOBAL VARIABLES (Declare these at the top of main.c, outside of main) --- */
@@ -166,6 +197,14 @@ int main(void)
 /* --- INSIDE THE MAIN WHILE(1) LOOP --- */
   while (1)
   {
+
+    // example send CAN
+    if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+        // Transmission request Error
+        Error_Handler();
+    }
+
+
     if (button_pressed) {
 		button_pressed = 0;
 		if (button_1_press_count >= 6)
