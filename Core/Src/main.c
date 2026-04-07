@@ -121,6 +121,33 @@ volatile uint8_t button_pressed_2 = 0;
 
 /* USER CODE END 0 */
 
+// adc for pc0 and pc1
+uint16_t ADC_Read_Channel(uint32_t channel) {
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  sConfig.Channel = channel;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+
+  HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+
+  HAL_ADC_Start(&hadc1);
+  HAL_ADC_PollForConversion(&hadc1, 10);
+
+  uint16_t value = HAL_ADC_GetValue(&hadc1);
+
+  HAL_ADC_Stop(&hadc1);
+
+  return value;
+}
+
+uint16_t ADC_Read_PC0(void) {
+  return ADC_Read_Channel(ADC_CHANNEL_10);
+}
+uint16_t ADC_Read_PC1(void) {
+  return ADC_Read_Channel(ADC_CHANNEL_11);
+}
+
 
 TIM_HandleTypeDef htim2;  // changed to htim2
 
@@ -278,6 +305,18 @@ PWM_Init(10000); // Initialize PWM at 1 kHz frequency
     PWM_SetDuty(2, 5); // Channel 3 (PB2) controls wiper speed
     PWM_SetDuty(4, 4); // Channel 4 (PB1) controls wiper angle (fixed at 50% for demo)
     
+    // get adcs
+
+    char msg[100];
+
+    uint16_t pc0_val = ADC_Read_PC0();
+    uint16_t pc1_val = ADC_Read_PC1();
+
+    sprintf(msg, "PC0: %u | PC1: %u\r\n", pc0_val, pc1_val);
+    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+
+    //HAL_Delay(200);  // slow it down so terminal is readable
+
     // example send CAN
     if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
         // Transmission request Error
@@ -449,12 +488,12 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = ENABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 4;
+  hadc1.Init.NbrOfConversion = 1;
   hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -653,6 +692,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 
+  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
