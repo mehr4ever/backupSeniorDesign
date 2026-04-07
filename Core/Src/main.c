@@ -148,6 +148,9 @@ uint16_t ADC_Read_PC1(void) {
   return ADC_Read_Channel(ADC_CHANNEL_11);
 }
 
+float ADC_To_Voltage(uint16_t adc_val) {
+  return (adc_val / 4095.0f) * 3.3f;
+}
 
 TIM_HandleTypeDef htim2;  // changed to htim2
 
@@ -311,8 +314,12 @@ PWM_Init(10000); // Initialize PWM at 1 kHz frequency
 
     uint16_t pc0_val = ADC_Read_PC0();
     uint16_t pc1_val = ADC_Read_PC1();
+    float vpc0 = ADC_To_Voltage(pc0_val);
+    float vpc1= ADC_To_Voltage(pc1_val);
 
-    sprintf(msg, "PC0: %u | PC1: %u\r\n", pc0_val, pc1_val);
+
+
+    sprintf(msg, "PC0: %f | PC1: %f\r\n", vpc0, vpc1);
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
 
     //HAL_Delay(200);  // slow it down so terminal is readable
