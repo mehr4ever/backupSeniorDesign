@@ -122,51 +122,44 @@ volatile uint8_t button_pressed_2 = 0;
 /* USER CODE END 0 */
 
 
-// setup pwm out of pb1
-TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim2;  // changed to htim2
 
 void PWM_Init(uint32_t freq_hz) {
-  __HAL_RCC_TIM3_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_TIM2_CLK_ENABLE();  // TIM2 clock
+    __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-  // PB1 = TIM3_CH4, PB2 = TIM3_CH3
-  GPIO_InitStruct.Pin = GPIO_PIN_1 | GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    // PB2 = TIM2_CH4, PB3 = TIM2_CH2
+    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;  // TIM2 = AF1
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  // Timer clock (APB1 = 16 MHz in your setup)
-  uint32_t timer_clk = HAL_RCC_GetPCLK1Freq();
+    uint32_t timer_clk = HAL_RCC_GetPCLK1Freq();
+    uint32_t prescaler = (timer_clk / 1000000) - 1;
+    uint32_t period = (1000000 / freq_hz) - 1;
 
-  // Compute prescaler and period
-  uint32_t prescaler = (timer_clk / 1000000) - 1;  // 1 MHz timer base
-  uint32_t period = (1000000 / freq_hz) - 1;
+    htim2.Instance = TIM2;          // TIM2, not TIM3
+    htim2.Init.Prescaler = prescaler;
+    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim2.Init.Period = period;
+    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    HAL_TIM_PWM_Init(&htim2);
 
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = prescaler;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = period;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  HAL_TIM_PWM_Init(&htim3);
+    TIM_OC_InitTypeDef sConfigOC = {0};
+    sConfigOC.OCMode = TIM_OCMODE_PWM1;
+    sConfigOC.Pulse = 0;
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;  // start at 0% duty
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2);  // PB3
+    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4);  // PB2
 
-  // Channel 3 (PB2)
-  HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3);
-
-  // Channel 4 (PB1)
-  HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4);
-
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);  // PB3
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);  // PB2
 }
 
 
@@ -174,13 +167,13 @@ void PWM_SetDuty(uint8_t channel, float duty_percent) {
   if (duty_percent < 0) duty_percent = 0;
   if (duty_percent > 100) duty_percent = 100;
 
-  uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim3);
+  uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim2);
   uint32_t pulse = (uint32_t)((duty_percent / 100.0f) * (period + 1));
 
-  if (channel == 3) {
-      __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, pulse); // PB2
+  if (channel == 2) {
+      __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, pulse); // PB2
   } else if (channel == 4) {
-      __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, pulse); // PB1
+      __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pulse); // PB1
   }
 }
 
@@ -191,14 +184,14 @@ void PWM_SetFrequency(uint32_t freq_hz) {
   uint32_t prescaler = (timer_clk / 1000000) - 1;  // keep 1 MHz base
   uint32_t period = (1000000 / freq_hz) - 1;
 
-  __HAL_TIM_DISABLE(&htim3);
+  __HAL_TIM_DISABLE(&htim2);
 
-  __HAL_TIM_SET_PRESCALER(&htim3, prescaler);
-  __HAL_TIM_SET_AUTORELOAD(&htim3, period);
+  __HAL_TIM_SET_PRESCALER(&htim2, prescaler);
+  __HAL_TIM_SET_AUTORELOAD(&htim2, period);
 
-  __HAL_TIM_SET_COUNTER(&htim3, 0);
+  __HAL_TIM_SET_COUNTER(&htim2, 0);
 
-  __HAL_TIM_ENABLE(&htim3);
+  __HAL_TIM_ENABLE(&htim2);
 }
 
 
@@ -276,19 +269,19 @@ int main(void)
 /* --- GLOBAL VARIABLES (Declare these at the top of main.c, outside of main) --- */
 /* These are visible to other subsystems and the Debugger Expressions window */
 
-PWM_Init(1000); // Initialize PWM at 1 kHz frequency
+PWM_Init(10000); // Initialize PWM at 1 kHz frequency
 /* --- INSIDE THE MAIN WHILE(1) LOOP --- */
   while (1)
   {
 
     // set pwm 
-    PWM_SetDuty(3, 5); // Channel 3 (PB2) controls wiper speed
-    PWM_SetDuty(4, 50); // Channel 4 (PB1) controls wiper angle (fixed at 50% for demo)
+    PWM_SetDuty(2, 5); // Channel 3 (PB2) controls wiper speed
+    PWM_SetDuty(4, 4); // Channel 4 (PB1) controls wiper angle (fixed at 50% for demo)
     
     // example send CAN
     if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
         // Transmission request Error
-        Error_Handler();
+      //  Error_Handler();
     }
     //ILI9341_WriteString(15, 60, (char*) TxData, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
     
