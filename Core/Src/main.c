@@ -38,6 +38,22 @@ uint8_t automaticMode = 0;
 // CAN code
 CAN_HandleTypeDef hcan1;
 
+// ── CAN1 MSP Init ────────────────────────────────────────────────────────────
+void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+      GPIO_InitTypeDef GPIO_InitStruct = {0};
+      __HAL_RCC_CAN1_CLK_ENABLE();
+      __HAL_RCC_GPIOB_CLK_ENABLE();
+
+      // PB8 = CAN1_RX,  PB9 = CAN1_TX  (AF9)
+      GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+      GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+      GPIO_InitStruct.Pull      = GPIO_NOPULL;
+      GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+      GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
+      HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  }
+}
 
 static void MX_CAN1_Init(void) {
     hcan1.Instance = CAN1;
@@ -146,7 +162,7 @@ int main(void)
 
   // CAN TX init
   MX_CAN1_Init();
-  CAN_FilterTypeDef filter;
+  //CAN_FilterTypeDef filter;
   /*filter.FilterBank = 14;
   filter.FilterMode = CAN_FILTERMODE_IDMASK;
   filter.FilterScale = CAN_FILTERSCALE_32BIT;
@@ -188,7 +204,8 @@ int main(void)
         // Transmission request Error
         Error_Handler();
     }
-
+    //ILI9341_WriteString(15, 60, (char*) TxData, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+    
 
     if (button_pressed) {
 		button_pressed = 0;
@@ -219,6 +236,7 @@ int main(void)
       automaticMode = 0;
 			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
 			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+      
 		}
 		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
   }
