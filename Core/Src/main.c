@@ -1,777 +1,639 @@
-/* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
+// includes
 #include "main.h"
-
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
 #include "fonts.h"
 #include "ili9341.h"
 #include <stdio.h>
 #include <string.h>
-volatile uint32_t iteration = 0;
-volatile uint32_t last_tick = 0;
-volatile float seconds_elapsed = 0.0f;
-
-// Variables for other subsystems to read
-volatile int current_wiper_speed = 0;
-char global_intensity[15] = "Off"; 
-uint8_t automaticMode = 0;
 
 
-// CAN code
+
+#define NUM_MANUAL_SPEEDS 3
+
+#define IR_PWM_FREQ_HZ        30000
+#define IR_PWM_DUTY_PERCENT   4.0f
+
+#define VIB_SAMPLE_COUNT     10
+#define VIB_SAMPLE_DELAY_MS  5
+#define VIB_THRESH_OFF  50
+#define VIB_THRESH_LOW  500
+#define VIB_THRESH_MODERATE 1000
+
+#define BTN_DEBOUNCE_MS  200
+
+#define CAN_TX_STD_ID          0x123U
+#define CAN_TX_INTERVAL_ITERS  100U
+
+
+
 CAN_HandleTypeDef hcan1;
-
-// ── CAN1 MSP Init ────────────────────────────────────────────────────────────
-void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan) {
-  if (hcan->Instance == CAN1) {
-      GPIO_InitTypeDef GPIO_InitStruct = {0};
-      __HAL_RCC_CAN1_CLK_ENABLE();
-      __HAL_RCC_GPIOB_CLK_ENABLE();
-
-      // PB8 = CAN1_RX,  PB9 = CAN1_TX  (AF9)
-      GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
-      GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
-      GPIO_InitStruct.Pull      = GPIO_NOPULL;
-      GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
-      GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
-      HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-  }
-}
-
-static void MX_CAN1_Init(void) {
-    hcan1.Instance = CAN1;
-    hcan1.Init.Prescaler = 9;
-    hcan1.Init.Mode = CAN_MODE_NORMAL;
-    hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-    hcan1.Init.TimeSeg1 = CAN_BS1_12TQ;
-    hcan1.Init.TimeSeg2 = CAN_BS2_3TQ;
-    hcan1.Init.TimeTriggeredMode = DISABLE;
-    hcan1.Init.AutoBusOff = DISABLE;
-    hcan1.Init.AutoWakeUp = DISABLE;
-    hcan1.Init.AutoRetransmission = ENABLE;
-    hcan1.Init.ReceiveFifoLocked = DISABLE;
-    hcan1.Init.TransmitFifoPriority = DISABLE;
-    HAL_CAN_Init(&hcan1);
-}
-
-
-
-
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1;
-
+ADC_HandleTypeDef hadc1; // IR adc
 SPI_HandleTypeDef hspi1;
-
 UART_HandleTypeDef huart2;
+TIM_HandleTypeDef htim2;  // PWM timer
 
-/* USER CODE BEGIN PV */
 
-/* USER CODE END PV */
 
-/* Private function prototypes -----------------------------------------------*/
+
+volatile int     g_wiper_speed   = 0;
+char             g_intensity[16] = "Off";
+volatile uint8_t g_auto_mode     = 0;
+volatile uint32_t g_iteration    = 0;
+volatile uint8_t  g_btn1_pressed = 0;   
+volatile uint8_t  g_btn2_pressed = 0;   
+volatile uint32_t g_btn1_count   = 0;   
+volatile uint32_t g_btn2_count   = 0;
+
+
+
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
-/* USER CODE BEGIN PFP */
-static void TFT_print(void);
-volatile uint32_t button_1_press_count = 0;
-volatile uint8_t button_pressed = 0;
-volatile uint32_t button_2_press_count = 0;
-volatile uint8_t button_pressed_2 = 0;
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
-
-// adc for pc0 and pc1
-uint16_t ADC_Read_Channel(uint32_t channel) {
-  ADC_ChannelConfTypeDef sConfig = {0};
-
-  sConfig.Channel = channel;
-  sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
-
-  HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-
-  HAL_ADC_Start(&hadc1);
-  HAL_ADC_PollForConversion(&hadc1, 10);
-
-  uint16_t value = HAL_ADC_GetValue(&hadc1);
-
-  HAL_ADC_Stop(&hadc1);
-
-  return value;
-}
-
-uint16_t ADC_Read_PC0(void) {
-  return ADC_Read_Channel(ADC_CHANNEL_10);
-}
-uint16_t ADC_Read_PC1(void) {
-  return ADC_Read_Channel(ADC_CHANNEL_11);
-}
-
-float ADC_To_Voltage(uint16_t adc_val) {
-  return (adc_val / 4095.0f) * 3.3f;
-}
-
-TIM_HandleTypeDef htim2;  // changed to htim2
-
-void PWM_Init(uint32_t freq_hz) {
-    __HAL_RCC_TIM2_CLK_ENABLE();  // TIM2 clock
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-    // PB2 = TIM2_CH4, PB3 = TIM2_CH2
-    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;  // TIM2 = AF1
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    uint32_t timer_clk = HAL_RCC_GetPCLK1Freq();
-    uint32_t prescaler = (timer_clk / 1000000) - 1;
-    uint32_t period = (1000000 / freq_hz) - 1;
-
-    htim2.Instance = TIM2;          // TIM2, not TIM3
-    htim2.Init.Prescaler = prescaler;
-    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim2.Init.Period = period;
-    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_PWM_Init(&htim2);
-
-    TIM_OC_InitTypeDef sConfigOC = {0};
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse = 0;
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-
-    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2);  // PB3
-    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4);  // PB2
-
-    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);  // PB3
-    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);  // PB2
-}
+static void MX_CAN1_Init(void);
+static void PWM_Init(uint32_t freq_hz);
+static void PWM_SetDuty(uint8_t channel, float duty_pct);
+static void     TFT_DrawInitialScreen(void);
+static void     TFT_UpdateMode(void);
+static void     TFT_UpdateSpeed(void);
+static void     TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir_ch11, int      rain_detected);
+ 
+static uint16_t ADC_ReadChannel(uint32_t channel);
+static uint16_t ADC_ReadPC0(void);
+static uint16_t ADC_ReadPC1(void);
+static float    ADC_ToVoltage(uint16_t adc_val);
+ 
+static void     AutoMode_Process(void);
+static void     CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data);
+ 
 
 
-void PWM_SetDuty(uint8_t channel, float duty_percent) {
-  if (duty_percent < 0) duty_percent = 0;
-  if (duty_percent > 100) duty_percent = 100;
-
-  uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim2);
-  uint32_t pulse = (uint32_t)((duty_percent / 100.0f) * (period + 1));
-
-  if (channel == 2) {
-      __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, pulse); // PB2
-  } else if (channel == 4) {
-      __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pulse); // PB1
-  }
-}
-
-
-void PWM_SetFrequency(uint32_t freq_hz) {
-  uint32_t timer_clk = HAL_RCC_GetPCLK1Freq();
-
-  uint32_t prescaler = (timer_clk / 1000000) - 1;  // keep 1 MHz base
-  uint32_t period = (1000000 / freq_hz) - 1;
-
-  __HAL_TIM_DISABLE(&htim2);
-
-  __HAL_TIM_SET_PRESCALER(&htim2, prescaler);
-  __HAL_TIM_SET_AUTORELOAD(&htim2, period);
-
-  __HAL_TIM_SET_COUNTER(&htim2, 0);
-
-  __HAL_TIM_ENABLE(&htim2);
-}
-
-
-
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
 int main(void)
 {
-
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
   MX_USART2_UART_Init();
   MX_SPI1_Init();
-  /* USER CODE BEGIN 2 */
+  MX_CAN1_Init();
+
   ILI9341_Unselect();
   ILI9341_Init();
-  TFT_print();
+  TFT_DrawInitialScreen();
 
-  /* USER CODE END 2 */
-
-  // CAN TX init
-  MX_CAN1_Init();
-  //CAN_FilterTypeDef filter;
-  /*filter.FilterBank = 14;
-  filter.FilterMode = CAN_FILTERMODE_IDMASK;
-  filter.FilterScale = CAN_FILTERSCALE_32BIT;
-  filter.FilterIdHigh = 0x0000;
-  filter.FilterIdLow = 0x0000;
-  filter.FilterMaskIdHigh = 0x0000;
-  filter.FilterMaskIdLow = 0x0000;
+  PWM_Init(IR_PWM_FREQ_HZ);
+  PWM_SetDuty(2, IR_PWM_DUTY_PERCENT); 
+  PWM_SetDuty(4, IR_PWM_DUTY_PERCENT);  
+ 
+  CAN_FilterTypeDef filter = {0};
+  filter.FilterBank           = 0;
+  filter.FilterMode           = CAN_FILTERMODE_IDMASK;
+  filter.FilterScale          = CAN_FILTERSCALE_32BIT;
+  filter.FilterIdHigh         = 0x0000;
+  filter.FilterIdLow          = 0x0000;
+  filter.FilterMaskIdHigh     = 0x0000;   /* don't-care → accept all */
+  filter.FilterMaskIdLow      = 0x0000;
   filter.FilterFIFOAssignment = CAN_RX_FIFO0;
-  filter.FilterActivation = ENABLE;
+  filter.FilterActivation     = ENABLE;
   filter.SlaveStartFilterBank = 14;
-  HAL_CAN_ConfigFilter(&hcan2, &filter); */
-
+  HAL_CAN_ConfigFilter(&hcan1, &filter);
+  
   HAL_CAN_Start(&hcan1);
-
-  CAN_TxHeaderTypeDef TxHeader;
-  TxHeader.StdId = 0x123;
-  TxHeader.ExtId = 0;
-  TxHeader.RTR = CAN_RTR_DATA;
-  TxHeader.IDE = CAN_ID_STD;
-  TxHeader.DLC = 8;
+  
+  CAN_TxHeaderTypeDef TxHeader = {0};
+  TxHeader.StdId              = CAN_TX_STD_ID;
+  TxHeader.IDE                = CAN_ID_STD;
+  TxHeader.RTR                = CAN_RTR_DATA;
+  TxHeader.DLC                = 8;
   TxHeader.TransmitGlobalTime = DISABLE;
-
-  uint8_t TxData[8] = "HELLO!!!";
-  uint32_t TxMailbox;
-
-
-
-/* Infinite loop */
-/* --- GLOBAL VARIABLES (Declare these at the top of main.c, outside of main) --- */
-/* These are visible to other subsystems and the Debugger Expressions window */
-
-PWM_Init(10000); // Initialize PWM at 1 kHz frequency
-/* --- INSIDE THE MAIN WHILE(1) LOOP --- */
-  while (1)
-  {
-
-    // set pwm 
-    PWM_SetDuty(2, 5); // Channel 3 (PB2) controls wiper speed
-    PWM_SetDuty(4, 4); // Channel 4 (PB1) controls wiper angle (fixed at 50% for demo)
-    
-    // get adcs
-
-    char msg[100];
-
-    uint16_t pc0_val = ADC_Read_PC0();
-    uint16_t pc1_val = ADC_Read_PC1();
-    float vpc0 = ADC_To_Voltage(pc0_val);
-    float vpc1= ADC_To_Voltage(pc1_val);
-
-
-
-    sprintf(msg, "PC0: %f | PC1: %f\r\n", vpc0, vpc1);
-    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-
-    //HAL_Delay(200);  // slow it down so terminal is readable
-
-    // example send CAN
-    if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-        // Transmission request Error
-      //  Error_Handler();
+  
+  uint8_t TxData[8] = {0};
+  
+  while (1) {
+    g_iteration++;
+ 
+    /* ── Button 1 (PA8): step manual speed ─────────────────────────── */
+    if (g_btn1_pressed) {
+      g_btn1_pressed = 0;
+ 
+      if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
+            {
+                /* Cycle 0 → 1 → ... → NUM_MANUAL_SPEEDS → 0 */
+                g_wiper_speed = (g_wiper_speed + 1) % (NUM_MANUAL_SPEEDS + 1);
+                TFT_UpdateSpeed();
+ 
+                char dbg[64];
+                snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
+                HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+            }
+        }
+ 
+    /* ── Button 2 (PB10): toggle AUTO / MANUAL ──────────────────────── */
+    if (g_btn2_pressed) {
+            g_btn2_pressed = 0;
+            g_auto_mode    = !g_auto_mode;
+ 
+            if (!g_auto_mode)
+            {
+                /* Returning to manual — reset speed to OFF */
+                g_wiper_speed = 0;
+                TFT_UpdateSpeed();
+            }
+ 
+            TFT_UpdateMode();
+ 
+            char dbg[64];
+            snprintf(dbg, sizeof(dbg), "[BTN2] Mode → %s\r\n",
+                     g_auto_mode ? "AUTO" : "MANUAL");
+            HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+        }
+ 
+        /* ── Automatic mode: sensor processing ──────────────────────────── */
+        if (g_auto_mode)
+        {
+            AutoMode_Process();
+        }
+ 
+        /* ── CAN transmit (throttled) ────────────────────────────────────── */
+        if (g_iteration % CAN_TX_INTERVAL_ITERS == 0)
+        {
+            /* Pack payload: byte 0 = speed, bytes 1-2 = mode & intensity */
+            memset(TxData, 0, sizeof(TxData));
+            TxData[0] = (uint8_t)g_wiper_speed;
+            TxData[1] = g_auto_mode;
+            strncpy((char*)&TxData[2], g_intensity, 5);  /* fits in 6 bytes */
+ 
+            CAN_TrySend(&TxHeader, TxData);
+        }
     }
-    //ILI9341_WriteString(15, 60, (char*) TxData, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-    
-
-    if (button_pressed) {
-		button_pressed = 0;
-		if (button_1_press_count >= 6)
-		{
-			button_1_press_count = 0;
-		}
-		char buffer[8];
-		if (button_1_press_count == 0) {
-			ILI9341_WriteString(15, 180, "SPEED: OFF", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-		}
-		else {
-			sprintf(buffer, "SPEED: %ld", button_1_press_count);
-			ILI9341_WriteString(15, 180, buffer, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-			ILI9341_FillRectangle(143, 180, 100, 200, ILI9341_BLACK);
-		}
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
-	}
-	if (button_pressed_2) {
-		button_pressed_2 = 0;
-		if (button_2_press_count % 2)
-		{
-      automaticMode = 1;
-			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
-			ILI9341_WriteString(15, 120, "MODE : AUTO", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-		}
-		else {
-      automaticMode = 0;
-			ILI9341_FillRectangle(125, 120, 100, 30, ILI9341_BLACK);
-			ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-      
-		}
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
-  }
-
-  if (automaticMode) {
-      GPIO_PinState rainState = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
-      char msg[250];
-
-      if (rainState == GPIO_PIN_RESET) {
-          // --- RAIN DETECTED ---
-          uint32_t total_vibration = 0;
-          uint16_t samples = 10; 
-
-          for (int i = 0; i < samples; i++) 
-          {
-              HAL_ADC_Start(&hadc1);
-              if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) 
-              {
-                  total_vibration += HAL_ADC_GetValue(&hadc1);
-              }
-              HAL_ADC_Stop(&hadc1);
-              HAL_Delay(5); 
-          }
-          uint32_t avg_vibration = total_vibration / samples;
-
-          // Update global variables for other subsystems
-          if (avg_vibration <= 50) { 
-              strcpy(global_intensity, "Off"); 
-              current_wiper_speed = 0; 
-          } 
-          else if (avg_vibration <= 500) { 
-              strcpy(global_intensity, "Low"); 
-              current_wiper_speed = 25; 
-          } 
-          else if (avg_vibration <= 1000) { 
-              strcpy(global_intensity, "Moderate"); 
-              current_wiper_speed = 50; 
-          } 
-          else { 
-              strcpy(global_intensity, "High"); 
-              current_wiper_speed = 75; 
-          }
-
-          sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | Water detected! | Avg AO: %lu | Intensity: %s | Recommended Speed: %d\r\n", 
-                  ++iteration, seconds_elapsed, (int)rainState, avg_vibration, global_intensity, current_wiper_speed);
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET); 
-      } 
-      else 
-      {
-          // --- NO RAIN ---
-          strcpy(global_intensity, "Off");
-          current_wiper_speed = 0;
-          
-          sprintf(msg, "Iter %lu | Elapsed Time: %.2fs | DO: %d | No water detected, waiting... | Intensity: %s | Recommended Speed: %d\r\n", 
-                  ++iteration, seconds_elapsed, (int)rainState, global_intensity, current_wiper_speed);
-          
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-      }
-
-
-      if (iteration % 500 == 0) {
-        HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-      }
-  }
-  }
-  /* USER CODE END 3 */
 }
 
-/**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+static void AutoMode_Process(void)
+{
+  GPIO_PinState rain_pin = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
+  int           rain_detected = (rain_pin == GPIO_PIN_RESET);
+ 
+  /* Read IR receiver voltages regardless of rain state (useful for debug) */
+  uint16_t ir_ch10 = ADC_ReadPC0();
+  uint16_t ir_ch11 = ADC_ReadPC1();
+ 
+  uint32_t avg_vib = 0;
+ 
+  if (rain_detected)
+  {
+    /* --- Average vibration ADC ---------------------------------------- */
+    uint32_t total_vib = 0;
+    for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
+    {
+      HAL_ADC_Start(&hadc1);
+      if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)
+        total_vib += HAL_ADC_GetValue(&hadc1);
+      HAL_ADC_Stop(&hadc1);
+      HAL_Delay(VIB_SAMPLE_DELAY_MS);
+    }
+    avg_vib = total_vib / VIB_SAMPLE_COUNT;
+ 
+    /* --- Map vibration → recommended speed ---------------------------- */
+    if (avg_vib <= VIB_THRESH_OFF)
+    {
+      strcpy(g_intensity, "Off");
+      g_wiper_speed = 0;
+    }
+    else if (avg_vib <= VIB_THRESH_LOW)
+    {
+      strcpy(g_intensity, "Low");
+      g_wiper_speed = 1;
+    }
+    else if (avg_vib <= VIB_THRESH_MODERATE)
+    {
+      strcpy(g_intensity, "Moderate");
+      g_wiper_speed = 2;
+    }
+    else
+    {
+      strcpy(g_intensity, "High");
+      g_wiper_speed = NUM_MANUAL_SPEEDS;   /* max speed */
+    }
+ 
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   /* rain LED on */
+  }
+  else
+  {
+    strcpy(g_intensity, "Off");
+    g_wiper_speed = 0;
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); /* rain LED off */
+  }
+ 
+  /* Update TFT speed row */
+  TFT_UpdateSpeed();
+ 
+  /* Update TFT sensor data rows */
+  TFT_UpdateSensorData(avg_vib, ir_ch10, ir_ch11, rain_detected);
+ 
+  /* UART debug (every 100 auto iterations to avoid flooding) */
+  static uint32_t auto_iter = 0;
+  if (++auto_iter % 100 == 0)
+  {
+    char msg[160];
+    snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu (%s) | IR_PC0:%u (%.2fV) | IR_PC1:%u (%.2fV) | Speed:%d\r\n",
+                 rain_detected, avg_vib, g_intensity,
+                 ir_ch10, ADC_ToVoltage(ir_ch10),
+                 ir_ch11, ADC_ToVoltage(ir_ch11),
+                 g_wiper_speed);
+    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
+  }
+}
+
+static void CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data)
+{
+  uint32_t mailbox;
+  if (HAL_CAN_AddTxMessage(&hcan1, hdr, data, &mailbox) != HAL_OK)
+  {
+    const char *err = "[CAN] TX mailbox full or error\r\n";
+    HAL_UART_Transmit(&huart2, (uint8_t*)err, strlen(err), 100);
+  }
+  else
+  {
+    char dbg[80];
+    snprintf(dbg, sizeof(dbg), "[CAN] TX → speed=%d mode=%s intensity=%s\r\n",g_wiper_speed, g_auto_mode ? "AUTO" : "MANUAL", g_intensity);
+    HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+  }
+}
+ 
+#define TFT_COL_LEFT    5
+#define TFT_ROW_TITLE   10
+#define TFT_ROW_MODE    60
+#define TFT_ROW_SPEED   100
+#define TFT_ROW_RAIN    140
+#define TFT_ROW_VIB     170
+#define TFT_ROW_IR0     200
+#define TFT_ROW_IR1     230
+
+static void TFT_ClearRow(uint16_t y)
+{
+  ILI9341_FillRectangle(TFT_COL_LEFT, y, 230, 26, ILI9341_BLACK);
+}
+
+static void TFT_DrawInitialScreen(void)
+{
+  ILI9341_FillScreen(ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_TITLE, "WIPER CTRL", Font_16x26, ILI9341_CYAN, ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_MODE, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_SPEED, "SPEED: OFF", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_RAIN, "RAIN : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_VIB, "VIB  : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0, "IR0  : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR1, "IR1  : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+}
+ 
+static void TFT_UpdateMode(void)
+{
+  TFT_ClearRow(TFT_ROW_MODE);
+  if (g_auto_mode)
+    ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_MODE, "MODE : AUTO  ", Font_16x26, ILI9341_GREEN, ILI9341_BLACK);
+  else
+    ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_MODE, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+}
+ 
+
+static void TFT_UpdateSpeed(void)
+{
+  TFT_ClearRow(TFT_ROW_SPEED);
+  char buf[20];
+  if (g_wiper_speed == 0)
+    snprintf(buf, sizeof(buf), "SPEED: OFF   ");
+  else
+    snprintf(buf, sizeof(buf), "SPEED: %d     ", g_wiper_speed);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_SPEED, buf, Font_16x26, ILI9341_YELLOW, ILI9341_BLACK);
+}
+ 
+static void TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir_ch11, int rain_detected)
+{
+  char buf[24];
+ 
+  /* RAIN row */
+  TFT_ClearRow(TFT_ROW_RAIN);
+  snprintf(buf, sizeof(buf), "RAIN : %s   ", rain_detected ? "YES" : "NO ");
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_RAIN, buf, Font_16x26, rain_detected ? ILI9341_RED : ILI9341_WHITE, ILI9341_BLACK);
+ 
+  /* VIB row */
+  TFT_ClearRow(TFT_ROW_VIB);
+  snprintf(buf, sizeof(buf), "VIB  :%4lu %-8s", avg_vib, g_intensity);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_VIB, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+ 
+  /* IR0 row */
+  TFT_ClearRow(TFT_ROW_IR0);
+  snprintf(buf, sizeof(buf), "IR0  :%.2fV  ", ADC_ToVoltage(ir_ch10));
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+ 
+  /* IR1 row */
+  TFT_ClearRow(TFT_ROW_IR1);
+  snprintf(buf, sizeof(buf), "IR1  :%.2fV  ", ADC_ToVoltage(ir_ch11));
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR1, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+}
+ 
+static uint16_t ADC_ReadChannel(uint32_t channel)
+{
+  ADC_ChannelConfTypeDef sConfig = {0};
+  sConfig.Channel      = channel;
+  sConfig.Rank         = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+  HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+ 
+  HAL_ADC_Start(&hadc1);
+  HAL_ADC_PollForConversion(&hadc1, 10);
+  uint16_t val = HAL_ADC_GetValue(&hadc1);
+  HAL_ADC_Stop(&hadc1);
+  return val;
+}
+ 
+static uint16_t ADC_ReadPC0(void) { return ADC_ReadChannel(ADC_CHANNEL_10); }
+static uint16_t ADC_ReadPC1(void) { return ADC_ReadChannel(ADC_CHANNEL_11); }
+ 
+static float ADC_ToVoltage(uint16_t adc_val)
+{
+    return (adc_val / 4095.0f) * 3.3f;
+}
+ 
+
+static void PWM_Init(uint32_t freq_hz)
+{
+  __HAL_RCC_TIM2_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+ 
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin       = GPIO_PIN_2 | GPIO_PIN_3;
+  GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull      = GPIO_NOPULL;
+  GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+ 
+  uint32_t pclk1    = HAL_RCC_GetPCLK1Freq();
+  uint32_t prescaler = (pclk1 / 1000000U) - 1U;   /* 1 MHz timer clock */
+  uint32_t period    = (1000000U / freq_hz) - 1U;
+ 
+  htim2.Instance               = TIM2;
+  htim2.Init.Prescaler         = prescaler;
+  htim2.Init.CounterMode       = TIM_COUNTERMODE_UP;
+  htim2.Init.Period            = period;
+  htim2.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+  HAL_TIM_PWM_Init(&htim2);
+ 
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  sConfigOC.OCMode     = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse      = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+ 
+  HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2);
+  HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4);
+ 
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
+}
+ 
+static void PWM_SetDuty(uint8_t channel, float duty_pct)
+{
+  if (duty_pct < 0.0f)   duty_pct = 0.0f;
+  if (duty_pct > 100.0f) duty_pct = 100.0f;
+ 
+  uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim2);
+  uint32_t pulse  = (uint32_t)((duty_pct / 100.0f) * (float)(period + 1U));
+ 
+  if (channel == 2)
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, pulse);
+  else if (channel == 4)
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pulse);
+}
+ 
+void PWM_SetFrequency(uint32_t freq_hz)
+{
+  uint32_t pclk1    = HAL_RCC_GetPCLK1Freq();
+  uint32_t prescaler = (pclk1 / 1000000U) - 1U;
+  uint32_t period    = (1000000U / freq_hz) - 1U;
+ 
+  __HAL_TIM_DISABLE(&htim2);
+  __HAL_TIM_SET_PRESCALER(&htim2, prescaler);
+  __HAL_TIM_SET_AUTORELOAD(&htim2, period);
+  __HAL_TIM_SET_COUNTER(&htim2, 0);
+  __HAL_TIM_ENABLE(&htim2);
+}
+ 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == GPIO_PIN_8)         /* PA8 — speed button */
+  {
+    static uint32_t prev_tick = 0;
+    uint32_t now = HAL_GetTick();
+    if (now - prev_tick > BTN_DEBOUNCE_MS)
+    {
+      g_btn1_count++;
+      g_btn1_pressed = 1;
+      prev_tick = now;
+    }
+  }
+  else if (GPIO_Pin == GPIO_PIN_10)   /* PB10 — mode button */
+  {
+    static uint32_t prev_tick = 0;
+    uint32_t now = HAL_GetTick();
+    if (now - prev_tick > BTN_DEBOUNCE_MS)
+    {
+      g_btn2_count++;
+      g_btn2_pressed = 1;
+      prev_tick = now;
+    }
+  }
+}
+ 
+
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-  /** Configure the main internal regulator output voltage
-  */
+ 
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
-
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+ 
+  /* HSI only, no PLL — system runs at 16 MHz */
+  RCC_OscInitStruct.OscillatorType      = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState            = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_OscInitStruct.PLL.PLLState        = RCC_PLL_NONE;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) Error_Handler();
+ 
+  RCC_ClkInitStruct.ClockType      = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                                     | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) Error_Handler();
+}
+ 
+void HAL_CAN_MspInit(CAN_HandleTypeDef *hcan)
+{
+  if (hcan->Instance == CAN1)
   {
-    Error_Handler();
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    __HAL_RCC_CAN1_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+ 
+    GPIO_InitStruct.Pin       = GPIO_PIN_8 | GPIO_PIN_9;
+    GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
   }
 }
-
-/**
-  * @brief ADC1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ 
+static void MX_CAN1_Init(void)
+{
+  hcan1.Instance                  = CAN1;
+  hcan1.Init.Prescaler            = 9;
+  hcan1.Init.Mode                 = CAN_MODE_NORMAL;
+  hcan1.Init.SyncJumpWidth        = CAN_SJW_1TQ;
+  hcan1.Init.TimeSeg1             = CAN_BS1_12TQ;
+  hcan1.Init.TimeSeg2             = CAN_BS2_3TQ;
+  hcan1.Init.TimeTriggeredMode    = DISABLE;
+  hcan1.Init.AutoBusOff           = DISABLE;
+  hcan1.Init.AutoWakeUp           = DISABLE;
+  hcan1.Init.AutoRetransmission   = ENABLE;
+  hcan1.Init.ReceiveFifoLocked    = DISABLE;
+  hcan1.Init.TransmitFifoPriority = DISABLE;
+  if (HAL_CAN_Init(&hcan1) != HAL_OK) Error_Handler();
+}
+ 
 static void MX_ADC1_Init(void)
 {
-
-  /* USER CODE BEGIN ADC1_Init 0 */
-
-  /* USER CODE END ADC1_Init 0 */
-
   ADC_ChannelConfTypeDef sConfig = {0};
-
-  /* USER CODE BEGIN ADC1_Init 1 */
-
-  /* USER CODE END ADC1_Init 1 */
-
-  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
-  */
-  hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
-  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc1.Init.ScanConvMode = ENABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+ 
+  hadc1.Instance                   = ADC1;
+  hadc1.Init.ClockPrescaler        = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.Resolution            = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode          = DISABLE;   /* single-channel mode */
+  hadc1.Init.ContinuousConvMode    = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.ExternalTrigConvEdge  = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv      = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion       = 1;
   hadc1.Init.DMAContinuousRequests = DISABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-  if (HAL_ADC_Init(&hadc1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_0;
-  sConfig.Rank = 1;
+  hadc1.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK) Error_Handler();
+ 
+  /* Default channel; will be overridden per-call by ADC_ReadChannel() */
+  sConfig.Channel      = ADC_CHANNEL_0;
+  sConfig.Rank         = 1;
   sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_1;
-  sConfig.Rank = 2;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_0;
-  sConfig.Rank = 3;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_1;
-  sConfig.Rank = 4;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN ADC1_Init 2 */
-
-  /* USER CODE END ADC1_Init 2 */
-
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) Error_Handler();
 }
-
-/**
-  * @brief SPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ 
 static void MX_SPI1_Init(void)
 {
-
-  /* USER CODE BEGIN SPI1_Init 0 */
-
-  /* USER CODE END SPI1_Init 0 */
-
-  /* USER CODE BEGIN SPI1_Init 1 */
-
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Instance               = SPI1;
+  hspi1.Init.Mode              = SPI_MODE_MASTER;
+  hspi1.Init.Direction         = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize          = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity       = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase          = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS               = SPI_NSS_SOFT;
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI1_Init 2 */
-
-  /* USER CODE END SPI1_Init 2 */
-
+  hspi1.Init.FirstBit          = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode            = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation    = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial     = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK) Error_Handler();
 }
-
-/**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
+ 
 static void MX_USART2_UART_Init(void)
 {
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Instance          = USART2;
+  huart2.Init.BaudRate     = 115200;
+  huart2.Init.WordLength   = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits     = UART_STOPBITS_1;
+  huart2.Init.Parity       = UART_PARITY_NONE;
+  huart2.Init.Mode         = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
+  if (HAL_UART_Init(&huart2) != HAL_OK) Error_Handler();
 }
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ 
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  /* USER CODE BEGIN MX_GPIO_Init_1 */
-  /* Enable Interrupt for PA8 (Button 1) */
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0); // Priority 2 (lower than Systick)
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
-
-  /* Enable Interrupt for PB10 (Button 2) */
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0); // Priority 2
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-  /* USER CODE END MX_GPIO_Init_1 */
-
-  /* GPIO Ports Clock Enable */
+ 
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
+ 
+  /* ── Output pins ─────────────────────────────────────────────────────── */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7,  GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PB10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PC7 */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6,  GPIO_PIN_RESET);
+ 
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull  = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+ 
   GPIO_InitStruct.Pin = GPIO_PIN_7;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PA8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);        /* PC7  — TFT CS or similar */
+ 
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);        /* PA10 — rain indicator LED */
+ 
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);        /* PA5  — rain LED (LD2) */
+ 
+  GPIO_InitStruct.Pin = GPIO_PIN_6;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);        /* PB6  — spare output */
+ 
+  /* ── Input pins ──────────────────────────────────────────────────────── */
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+ 
+  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);        /* PA9  — spare input */
+ 
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);        /* PB5  — rain sensor DO */
+ 
+  /* ── EXTI: PA8 (button 1) and PB10 (button 2) ───────────────────────── */
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PA9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PA10 */
+ 
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);        /* PA8  — speed button */
+ 
   GPIO_InitStruct.Pin = GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_6;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-
-  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);        /* PB10 — mode button  */
+ 
+  /* ── Analog: PC0, PC1 — IR receiver ADC inputs ───────────────────────── */
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pin  = GPIO_PIN_0 | GPIO_PIN_1;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
-
-  /* USER CODE END MX_GPIO_Init_2 */
+ 
+  /* ── NVIC for EXTI ───────────────────────────────────────────────────── */
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn,   1, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+ 
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
-
-/* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-	if(GPIO_Pin == GPIO_PIN_8)
-	{
-		static uint32_t prev = 0;
-		uint32_t curr = HAL_GetTick();
-		if (curr - prev > 200)
-		{
-			button_1_press_count++;
-//			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
-			button_pressed = 1;
-			prev = curr;
-		}
-	}
-	else if(GPIO_Pin == GPIO_PIN_10)
-	{
-		static uint32_t prev = 0;
-		uint32_t curr = HAL_GetTick();
-		if (curr - prev > 200)
-		{
-			button_2_press_count++;
-		//	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8);
-			button_pressed_2 = 1;
-			prev = curr;
-		}
-	}
-}
-static void TFT_print(void)
- {
- 	ILI9341_FillScreen(ILI9341_BLACK);
- 	ILI9341_WriteString(15, 120, "MODE : MANUAL", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
- 	ILI9341_WriteString(15, 180, "SPEED : OFF", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
- }
-/* USER CODE END 4 */
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ 
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+  while (1) {}
 }
+ 
 #ifdef USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+  (void)file; (void)line;
 }
-#endif /* USE_FULL_ASSERT */
+#endif
