@@ -9,8 +9,8 @@
 
 #define NUM_MANUAL_SPEEDS 3
 
-#define IR_PWM_FREQ_HZ        30000
-#define IR_PWM_DUTY_PERCENT   4.0f
+#define IR_PWM_FREQ_HZ        10000
+#define IR_PWM_DUTY_PERCENT   5.0f
 
 #define VIB_SAMPLE_COUNT     10
 #define VIB_SAMPLE_DELAY_MS  5
@@ -18,7 +18,7 @@
 #define VIB_THRESH_LOW  500
 #define VIB_THRESH_MODERATE 1000
 
-#define BTN_DEBOUNCE_MS  200
+#define BTN_DEBOUNCE_MS  100
 
 #define CAN_TX_STD_ID          0x123U
 #define CAN_TX_INTERVAL_ITERS  100U
@@ -237,7 +237,7 @@ static void AutoMode_Process(void)
   if (++auto_iter % 100 == 0)
   {
     char msg[160];
-    snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu (%s) | IR_PC0:%u (%.2fV) | IR_PC1:%u (%.2fV) | Speed:%d\r\n",
+    snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu (%s) | IR_PC0:%u (%.3fV) | IR_PC1:%u (%.3fV) | Speed:%d\r\n",
                  rain_detected, avg_vib, g_intensity,
                  ir_ch10, ADC_ToVoltage(ir_ch10),
                  ir_ch11, ADC_ToVoltage(ir_ch11),
@@ -325,12 +325,12 @@ static void TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir
  
   /* IR0 row */
   TFT_ClearRow(TFT_ROW_IR0);
-  snprintf(buf, sizeof(buf), "IR0  :%.2fV  ", ADC_ToVoltage(ir_ch10));
+  snprintf(buf, sizeof(buf), "IR0  :%.3fV  ", ADC_ToVoltage(ir_ch10));
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
  
   /* IR1 row */
   TFT_ClearRow(TFT_ROW_IR1);
-  snprintf(buf, sizeof(buf), "IR1  :%.2fV  ", ADC_ToVoltage(ir_ch11));
+  snprintf(buf, sizeof(buf), "IR1  :%.3fV  ", ADC_ToVoltage(ir_ch11));
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR1, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
 }
  
@@ -354,7 +354,7 @@ static uint16_t ADC_ReadPC1(void) { return ADC_ReadChannel(ADC_CHANNEL_11); }
  
 static float ADC_ToVoltage(uint16_t adc_val)
 {
-    return (adc_val / 4095.0f) * 3.3f;
+    return ((adc_val / 4095.0f) * 3.3f) * 1000.0;
 }
  
 
