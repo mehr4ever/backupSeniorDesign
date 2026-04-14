@@ -18,6 +18,9 @@
 #define VIB_THRESH_LOW  500
 #define VIB_THRESH_MODERATE 1000
 
+#define IR_LOW_THRESH 1500 // change
+#define IR_MODERATE_THRESH 2500 // change
+
 #define BTN_DEBOUNCE_MS  100
 
 #define CAN_TX_STD_ID          0x123U
@@ -172,14 +175,22 @@ int main(void)
 
 static void AutoMode_Process(void)
 {
-  GPIO_PinState rain_pin = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
-  int           rain_detected = (rain_pin == GPIO_PIN_RESET);
+  GPIO_PinState rain_pin1 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
+  GPIO_PinState rain_pin2 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);
+
+  int           rain_detected = (rain_pin1  == GPIO_PIN_RESET) || (rain_pin2 == GPIO_PIN_RESET);
  
   /* Read IR receiver voltages regardless of rain state (useful for debug) */
-  uint16_t ir_ch10 = ADC_ReadPC0();
-  uint16_t ir_ch11 = ADC_ReadPC1();
+ // uint16_t ir_ch10 = ADC_ReadPC0();
+ // uint16_t ir_ch11 = ADC_ReadPC1();
+  uint32_t ir_ch10 = 0;
+  uint32_t ir_ch11 = 0;
  
   uint32_t avg_vib = 0;
+  uint32_t avg_IR1 = 0;
+  uint32_t avg_IR2 = 0;
+  uint32_t avg_IR = 0;
+  uint32_t IR_speed = 0;
  
   if (rain_detected)
   {
@@ -190,31 +201,46 @@ static void AutoMode_Process(void)
       HAL_ADC_Start(&hadc1);
       if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)
         total_vib += HAL_ADC_GetValue(&hadc1);
+
+      ir_ch10 += ADC_ReadPC0();
+      ir_ch11 += ADC_ReadPC1();
+
       HAL_ADC_Stop(&hadc1);
       HAL_Delay(VIB_SAMPLE_DELAY_MS);
     }
     avg_vib = total_vib / VIB_SAMPLE_COUNT;
+    avg_IR1 = ir_ch10 / VIB_SAMPLE_COUNT;
+    avg_IR2 = ir_ch11 / VIB_SAMPLE_COUNT;
+    avg_IR = (avg_IR1 + avg_IR2) / 2;
+
+    if (avg_IR < IR_LOW_THRESH)      IR_speed = 3; // high
+    else if (avg_IR < IR_MODERATE_THRESH) IR_speed = 2; // moderate
+    else                    IR_speed = 1; // low
+
  
     /* --- Map vibration → recommended speed ---------------------------- */
-    if (avg_vib <= VIB_THRESH_OFF)
+    if (IR_speed == 1 && avg_vib >= VIB_THRESH_MODERATE)
     {
-      strcpy(g_intensity, "Off");
-      g_wiper_speed = 0;
+      strcpy(g_intensity, "Moderate");
+      g_wiper_speed = 2; // Moderate
     }
-    else if (avg_vib <= VIB_THRESH_LOW)
-    {
-      strcpy(g_intensity, "Low");
-      g_wiper_speed = 1;
-    }
-    else if (avg_vib <= VIB_THRESH_MODERATE)
+    else if (IR_speed ==  3 && avg_vib <= VIB_THRESH_LOW)
     {
       strcpy(g_intensity, "Moderate");
       g_wiper_speed = 2;
     }
+    else if (avg_vib <= VIB_THRESH_OFF)
+    {
+      strcpy(g_intensity, "Off");
+      g_wiper_speed = 0;
+    }
     else
     {
-      strcpy(g_intensity, "High");
-      g_wiper_speed = NUM_MANUAL_SPEEDS;   /* max speed */
+      g_wiper_speed = IR_speed;
+      if (IR_speed == 1)      strcpy(g_intensity, "Low");
+       else if (IR_speed == 2) strcpy(g_intensity, "Moderate");
+       else if (IR_speed == 3) strcpy(g_intensity, "High");
+
     }
  
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   /* rain LED on */
@@ -239,8 +265,8 @@ static void AutoMode_Process(void)
     char msg[160];
     snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu (%s) | IR_PC0:%u (%.3fV) | IR_PC1:%u (%.3fV) | Speed:%d\r\n",
                  rain_detected, avg_vib, g_intensity,
-                 ir_ch10, ADC_ToVoltage(ir_ch10),
-                 ir_ch11, ADC_ToVoltage(ir_ch11),
+                 avg_IR1, ADC_ToVoltage(avg_IR1),
+                 avg_IR2, ADC_ToVoltage(avg_IR2),
                  g_wiper_speed);
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
   }
