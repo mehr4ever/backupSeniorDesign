@@ -24,7 +24,7 @@
 #define IR_LOW_THRESH 28 // change
 
 
-#define BTN_DEBOUNCE_MS  100
+#define BTN_DEBOUNCE_MS  200
 
 #define CAN_TX_STD_ID          0x123U
 #define CAN_TX_INTERVAL_ITERS  100U
@@ -77,7 +77,7 @@ static uint16_t ADC_ReadPC0(void);
 static uint16_t ADC_ReadPC1(void);
 static float    ADC_ToVoltage(uint16_t adc_val);
  
-static void     AutoMode_Process(uint8_t *TxData, CAN_TxHeaderTypeDef *TxHeader);
+static void     AutoMode_Process();
 static void     CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data);
  
 
@@ -182,24 +182,25 @@ int main(void)
         /* ── Automatic mode: sensor processing ──────────────────────────── */
         if (g_auto_mode)
         {
-            AutoMode_Process(TxData, &TxHeader);
+            AutoMode_Process();
         }
  
-        /* ── CAN transmit (throttled) ────────────────────────────────────── */
-        if (g_iteration % CAN_TX_INTERVAL_ITERS == 0)
+        // In main(), replace the iteration-based CAN block with:
+        static uint32_t last_can_tx = 0;
+        uint32_t now = HAL_GetTick();
+        if (now - last_can_tx >= 500)   /* transmit every 500 ms */
         {
-            /* Pack payload: byte 0 = speed, bytes 1-2 = mode & intensity */
+            last_can_tx = now;
             memset(TxData, 0, sizeof(TxData));
             TxData[0] = (uint8_t)g_wiper_speed;
             TxData[1] = g_auto_mode;
-            strncpy((char*)&TxData[2], g_intensity, 5);  /* fits in 6 bytes */
- 
+            strncpy((char*)&TxData[2], g_intensity, 5);
             CAN_TrySend(&TxHeader, TxData);
         }
     }
 }
 
-static void AutoMode_Process(uint8_t *TxData, CAN_TxHeaderTypeDef *TxHeader)
+static void AutoMode_Process()
 {
   GPIO_PinState rain_pin1 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
   GPIO_PinState rain_pin2 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);
@@ -297,17 +298,6 @@ static void AutoMode_Process(uint8_t *TxData, CAN_TxHeaderTypeDef *TxHeader)
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
   }
 
-  /* ── CAN transmit (throttled) ────────────────────────────────────── */
-  if (g_iteration % CAN_TX_INTERVAL_ITERS == 0)
-  {
-      /* Pack payload: byte 0 = speed, bytes 1-2 = mode & intensity */
-      memset(TxData, 0, sizeof(TxData));
-      TxData[0] = (uint8_t)g_wiper_speed;
-      TxData[1] = g_auto_mode;
-      strncpy((char*)&TxData[2], g_intensity, 5);  /* fits in 6 bytes */
-
-      CAN_TrySend(&TxHeader, TxData);
-  }
 }
 
 static void CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data)
