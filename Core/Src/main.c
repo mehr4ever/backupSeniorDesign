@@ -56,7 +56,7 @@ volatile uint8_t  g_btn1_pressed = 0;
 volatile uint8_t  g_btn2_pressed = 0;   
 volatile uint32_t g_btn1_count   = 0;   
 volatile uint32_t g_btn2_count   = 0;
-  // Add these statics at the top of AutoMode_Process:
+
 static int     prev_rain     = -1;
 static uint32_t prev_vib     = UINT32_MAX;
 static uint16_t prev_ir0     = UINT16_MAX;
@@ -229,112 +229,102 @@ static void AutoMode_Process()
 {
   GPIO_PinState rain_pin1 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
   GPIO_PinState rain_pin2 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);
-
-  int           rain_detected = (rain_pin1  == GPIO_PIN_RESET) || (rain_pin2 == GPIO_PIN_RESET);
+  int rain_detected = (rain_pin1 == GPIO_PIN_RESET) || (rain_pin2 == GPIO_PIN_RESET);
  
-  /* Read IR receiver voltages regardless of rain state (useful for debug) */
- // uint16_t ir_ch10 = ADC_ReadPC0();
- // uint16_t ir_ch11 = ADC_ReadPC1();
-  uint32_t ir_ch10 = 0;
-  uint32_t ir_ch11 = 0;
- 
+  uint32_t total_vib = 0;
+  uint32_t total_ir0 = 0;
+  uint32_t total_ir1 = 0;
+  
   uint32_t avg_vib = 0;
   uint32_t avg_IR1 = 0;
   uint32_t avg_IR2 = 0;
-  uint32_t avg_IR = 0;
+  uint32_t avg_IR  = 0;
   uint32_t IR_speed = 0;
  
   if (rain_detected)
   {
-    /* --- Average vibration ADC ---------------------------------------- */
-    uint32_t total_vib = 0;
     for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
     {
-      HAL_ADC_Start(&hadc1);
-      if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)
-        total_vib += HAL_ADC_GetValue(&hadc1);
+      // read Vibration from PA0 (Channel 0)
+      // TODO: ADD OTHER VIBRATION READING
+      total_vib += ADC_ReadChannel(ADC_CHANNEL_0);
+      
+      // read IR readings
+      total_ir0 += ADC_ReadPC0();
+      total_ir1 += ADC_ReadPC1();
 
-      ir_ch10 += ADC_ReadPC0();
-      ir_ch11 += ADC_ReadPC1();
-
-      HAL_ADC_Stop(&hadc1);
       HAL_Delay(VIB_SAMPLE_DELAY_MS);
     }
+
+    // calculate averages
     avg_vib = total_vib / VIB_SAMPLE_COUNT;
-    avg_IR1 = ir_ch10 / VIB_SAMPLE_COUNT;
-    avg_IR2 = ir_ch11 / VIB_SAMPLE_COUNT;
-    avg_IR = (avg_IR1 + avg_IR2) / 2;
+    avg_IR1 = total_ir0 / VIB_SAMPLE_COUNT;
+    avg_IR2 = total_ir1 / VIB_SAMPLE_COUNT;
+    avg_IR  = (avg_IR1 + avg_IR2) / 2;
 
     if (avg_IR < IR_LOW_THRESH)           IR_speed = 3; // high
     else if (avg_IR < IR_MODERATE_THRESH) IR_speed = 2; // moderate
     else if (avg_IR < IR_HIGH_THRESH)     IR_speed = 1; // low
+    else                                  IR_speed = 0; // off
 
- 
-    /* --- Map vibration → recommended speed ---------------------------- */
     if (IR_speed == 1 && avg_vib >= VIB_THRESH_MODERATE)
     {
-      strcpy(g_intensity, "Moderate");
-      g_wiper_speed = 2; // Moderate
-    }
-    else if (IR_speed ==  3 && avg_vib <= VIB_THRESH_LOW)
-    {
-      strcpy(g_intensity, "Moderate");
       g_wiper_speed = 2;
+      strcpy(g_intensity, "Moderate");
+    }
+    else if (IR_speed == 3 && avg_vib <= VIB_THRESH_LOW)
+    {
+      g_wiper_speed = 2;
+      strcpy(g_intensity, "Moderate");
     }
     else if (avg_vib <= VIB_THRESH_OFF)
     {
-      strcpy(g_intensity, "Off");
       g_wiper_speed = 0;
+      strcpy(g_intensity, "Off");
     }
     else
     {
       g_wiper_speed = IR_speed;
       if (IR_speed == 1)      strcpy(g_intensity, "Low");
-       else if (IR_speed == 2) strcpy(g_intensity, "Moderate");
-       else if (IR_speed == 3) strcpy(g_intensity, "High");
-
+      else if (IR_speed == 2) strcpy(g_intensity, "Moderate");
+      else if (IR_speed == 3) strcpy(g_intensity, "High");
+      else                    strcpy(g_intensity, "Off");
     }
  
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   /* rain LED on */
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   // rain LED on
   }
   else
   {
     strcpy(g_intensity, "Off");
     g_wiper_speed = 0;
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); /* rain LED off */
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); // rain LED off
   }
  
-  /* Update TFT speed row */
   if (g_wiper_speed != prev_speed) {
     prev_speed = g_wiper_speed;
     TFT_UpdateSpeed();
   }
  
-  /* Update TFT sensor data rows */
-  if (rain_detected != prev_rain /*|| (prev_mode != g_auto_mode)*/ || (abs((int32_t)avg_vib - (int32_t)prev_vib) > VIB_CHANGE_THRESH) ||
-      (abs((int32_t)ir_ch10 - (int32_t)prev_ir0) > IR_CHANGE_THRESH) ||
-      (abs((int32_t)ir_ch11 - (int32_t)prev_ir1) > IR_CHANGE_THRESH))
+  if (rain_detected != prev_rain || 
+      (abs((int32_t)avg_vib - (int32_t)prev_vib) > VIB_CHANGE_THRESH) ||
+      (abs((int32_t)avg_IR1 - (int32_t)prev_ir0) > IR_CHANGE_THRESH) ||
+      (abs((int32_t)avg_IR2 - (int32_t)prev_ir1) > IR_CHANGE_THRESH))
   {
     prev_rain = rain_detected;
     prev_vib  = avg_vib;
-    prev_ir0  = ir_ch10;
-    prev_ir1  = ir_ch11;
-    prev_mode = g_auto_mode;
-    TFT_UpdateSensorData(avg_vib, ir_ch10, ir_ch11, rain_detected);
+    prev_ir0  = (uint16_t)avg_IR1;
+    prev_ir1  = (uint16_t)avg_IR2;
+    TFT_UpdateSensorData(avg_vib, (uint16_t)avg_IR1, (uint16_t)avg_IR2, rain_detected);
   }
-  /* UART debug (every 100 auto iterations to avoid flooding) */
+
   static uint32_t auto_iter = 0;
   if (++auto_iter % 100 == 0)
   {
-    char msg[160];
-    snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu (%s) | IR_PC0:%u (%.3fV) | IR_PC1:%u (%.3fV) | Speed:%d\r\n",
-                 rain_detected, avg_vib, g_intensity,
-                 avg_IR1, ADC_ToVoltage(avg_IR1),
-                 avg_IR2, ADC_ToVoltage(avg_IR2),
-                 g_wiper_speed);
+    char msg[180];
+    snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu | IR0:%lu | IR1:%lu | Spd:%d (%s)\r\n",
+                 rain_detected, avg_vib, avg_IR1, avg_IR2, g_wiper_speed, g_intensity);
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
   }
-
 }
 
 static void CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data)
@@ -423,7 +413,7 @@ static uint16_t ADC_ReadChannel(uint32_t channel)
   ADC_ChannelConfTypeDef sConfig = {0};
   sConfig.Channel      = channel;
   sConfig.Rank         = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+  sConfig.SamplingTime = ADC_SAMPLETIME_480CYCLES;
   HAL_ADC_ConfigChannel(&hadc1, &sConfig);
  
   HAL_ADC_Start(&hadc1);
@@ -612,7 +602,7 @@ static void MX_ADC1_Init(void)
   /* Default channel; will be overridden per-call by ADC_ReadChannel() */
   sConfig.Channel      = ADC_CHANNEL_0;
   sConfig.Rank         = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+  sConfig.SamplingTime = ADC_SAMPLETIME_480CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) Error_Handler();
 }
  
