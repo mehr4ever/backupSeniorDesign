@@ -10,7 +10,7 @@
 #define NUM_MANUAL_SPEEDS 3
 
 #define IR_PWM_FREQ_HZ        10000
-#define IR_PWM_DUTY_PERCENT   5.0f
+#define IR_PWM_DUTY_PERCENT   10.0f
 
 #define VIB_SAMPLE_COUNT     10
 #define VIB_SAMPLE_DELAY_MS  5
@@ -18,8 +18,10 @@
 #define VIB_THRESH_LOW  500
 #define VIB_THRESH_MODERATE 1000
 
-#define IR_LOW_THRESH 1500 // change
-#define IR_MODERATE_THRESH 2500 // change
+#define IR_HIGH_THRESH 124 // change
+#define IR_MODERATE_THRESH 80 // change
+#define IR_LOW_THRESH 28 // change
+
 
 #define BTN_DEBOUNCE_MS  100
 
@@ -122,16 +124,24 @@ int main(void)
       g_btn1_pressed = 0;
  
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
-            {
-                /* Cycle 0 → 1 → ... → NUM_MANUAL_SPEEDS → 0 */
-                g_wiper_speed = (g_wiper_speed + 1) % (NUM_MANUAL_SPEEDS + 1);
-                TFT_UpdateSpeed();
- 
-                char dbg[64];
-                snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
-                HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
-            }
+      {
+        g_wiper_speed = (g_wiper_speed + 1) % (NUM_MANUAL_SPEEDS + 1);
+
+        // Keep g_intensity in sync with manual speed
+        switch (g_wiper_speed) {
+            case 0:  strcpy(g_intensity, "Off");      break;
+            case 1:  strcpy(g_intensity, "Low");      break;
+            case 2:  strcpy(g_intensity, "Moderate"); break;
+            case 3:  strcpy(g_intensity, "High");     break;
         }
+
+        TFT_UpdateSpeed();
+ 
+        char dbg[64];
+        snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
+        HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+      }
+    }
  
     /* ── Button 2 (PB10): toggle AUTO / MANUAL ──────────────────────── */
     if (g_btn2_pressed) {
@@ -142,6 +152,7 @@ int main(void)
             {
                 /* Returning to manual — reset speed to OFF */
                 g_wiper_speed = 0;
+                strcpy(g_intensity, "Off");   // add this
                 TFT_UpdateSpeed();
             }
  
@@ -213,9 +224,9 @@ static void AutoMode_Process(void)
     avg_IR2 = ir_ch11 / VIB_SAMPLE_COUNT;
     avg_IR = (avg_IR1 + avg_IR2) / 2;
 
-    if (avg_IR < IR_LOW_THRESH)      IR_speed = 3; // high
+    if (avg_IR < IR_LOW_THRESH)           IR_speed = 3; // high
     else if (avg_IR < IR_MODERATE_THRESH) IR_speed = 2; // moderate
-    else                    IR_speed = 1; // low
+    else if (avg_IR < IR_HIGH_THRESH)     IR_speed = 1; // low
 
  
     /* --- Map vibration → recommended speed ---------------------------- */
