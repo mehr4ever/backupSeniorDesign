@@ -2,6 +2,7 @@
 #include "main.h"
 #include "fonts.h"
 #include "ili9341.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -28,6 +29,14 @@
 #define CAN_TX_STD_ID          0x123U
 #define CAN_TX_INTERVAL_ITERS  100U
 
+#define TFT_COL_LEFT    5
+#define TFT_ROW_TITLE   10
+#define TFT_ROW_MODE    60
+#define TFT_ROW_SPEED   100
+#define TFT_ROW_RAIN    140
+#define TFT_ROW_VIB     170
+#define TFT_ROW_IR0     200
+#define TFT_ROW_IR1     230
 
 
 CAN_HandleTypeDef hcan1;
@@ -142,6 +151,7 @@ int main(void)
         HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
       }
     }
+
  
     /* ── Button 2 (PB10): toggle AUTO / MANUAL ──────────────────────── */
     if (g_btn2_pressed) {
@@ -152,7 +162,12 @@ int main(void)
             {
                 /* Returning to manual — reset speed to OFF */
                 g_wiper_speed = 0;
-                strcpy(g_intensity, "Off");   // add this
+                /* Clear automatic sensor data */
+                TFT_ClearRow((uint16_t)TFT_ROW_RAIN);
+                TFT_ClearRow((uint16_t)TFT_ROW_VIB);
+                TFT_ClearRow((uint16_t)TFT_ROW_IR0);
+                TFT_ClearRow((uint16_t)TFT_ROW_IR1);
+                strcpy(g_intensity, "Off");   // add thisi
                 TFT_UpdateSpeed();
             }
  
@@ -299,16 +314,9 @@ static void CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data)
   }
 }
  
-#define TFT_COL_LEFT    5
-#define TFT_ROW_TITLE   10
-#define TFT_ROW_MODE    60
-#define TFT_ROW_SPEED   100
-#define TFT_ROW_RAIN    140
-#define TFT_ROW_VIB     170
-#define TFT_ROW_IR0     200
-#define TFT_ROW_IR1     230
 
-static void TFT_ClearRow(uint16_t y)
+
+void TFT_ClearRow(uint16_t y)
 {
   ILI9341_FillRectangle(TFT_COL_LEFT, y, 230, 26, ILI9341_BLACK);
 }
