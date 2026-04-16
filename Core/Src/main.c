@@ -77,7 +77,7 @@ static uint16_t ADC_ReadPC0(void);
 static uint16_t ADC_ReadPC1(void);
 static float    ADC_ToVoltage(uint16_t adc_val);
  
-static void     AutoMode_Process(void);
+static void     AutoMode_Process(uint8_t *TxData, CAN_TxHeaderTypeDef *TxHeader);
 static void     CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data);
  
 
@@ -182,7 +182,7 @@ int main(void)
         /* ── Automatic mode: sensor processing ──────────────────────────── */
         if (g_auto_mode)
         {
-            AutoMode_Process();
+            AutoMode_Process(TxData, &TxHeader);
         }
  
         /* ── CAN transmit (throttled) ────────────────────────────────────── */
@@ -199,7 +199,7 @@ int main(void)
     }
 }
 
-static void AutoMode_Process(void)
+static void AutoMode_Process(uint8_t *TxData, CAN_TxHeaderTypeDef *TxHeader)
 {
   GPIO_PinState rain_pin1 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
   GPIO_PinState rain_pin2 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);
@@ -295,6 +295,18 @@ static void AutoMode_Process(void)
                  avg_IR2, ADC_ToVoltage(avg_IR2),
                  g_wiper_speed);
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
+  }
+
+  /* ── CAN transmit (throttled) ────────────────────────────────────── */
+  if (g_iteration % CAN_TX_INTERVAL_ITERS == 0)
+  {
+      /* Pack payload: byte 0 = speed, bytes 1-2 = mode & intensity */
+      memset(TxData, 0, sizeof(TxData));
+      TxData[0] = (uint8_t)g_wiper_speed;
+      TxData[1] = g_auto_mode;
+      strncpy((char*)&TxData[2], g_intensity, 5);  /* fits in 6 bytes */
+
+      CAN_TrySend(&TxHeader, TxData);
   }
 }
 
