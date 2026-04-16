@@ -56,6 +56,16 @@ volatile uint8_t  g_btn1_pressed = 0;
 volatile uint8_t  g_btn2_pressed = 0;   
 volatile uint32_t g_btn1_count   = 0;   
 volatile uint32_t g_btn2_count   = 0;
+  // Add these statics at the top of AutoMode_Process:
+static int     prev_rain     = -1;
+static uint32_t prev_vib     = UINT32_MAX;
+static uint16_t prev_ir0     = UINT16_MAX;
+static uint16_t prev_ir1     = UINT16_MAX;
+static int     prev_speed    = -1;
+volatile uint8_t prev_mode     = 255;  // invalid initial value to force TFT update on first run
+
+#define VIB_CHANGE_THRESH 100  // only update TFT if vib changes by this much to reduce flicker
+#define IR_CHANGE_THRESH 10   // only update TFT if IR changes by this much to reduce flicker
 
 
 
@@ -144,7 +154,10 @@ int main(void)
             case 3:  strcpy(g_intensity, "High");     break;
         }
 
-        TFT_UpdateSpeed();
+        if (g_wiper_speed != prev_speed || (prev_mode != g_auto_mode)) {
+          prev_speed = g_wiper_speed;
+          TFT_UpdateSpeed();
+        }
  
         char dbg[64];
         snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
@@ -168,10 +181,21 @@ int main(void)
                 TFT_ClearRow((uint16_t)TFT_ROW_IR0);
                 TFT_ClearRow((uint16_t)TFT_ROW_IR1);
                 strcpy(g_intensity, "Off");   // add thisi
-                TFT_UpdateSpeed();
+                if (g_wiper_speed != prev_speed) {
+                  prev_speed = g_wiper_speed;
+                  TFT_UpdateSpeed();
+                }
+            } else {
+              prev_rain = -1;
+              prev_vib  = UINT32_MAX;
+              prev_ir0  = UINT16_MAX;
+              prev_ir1  = UINT16_MAX;
             }
- 
-            TFT_UpdateMode();
+            if (prev_mode != g_auto_mode) {
+              prev_mode = g_auto_mode;  
+              TFT_UpdateMode();
+                
+            }
  
             char dbg[64];
             snprintf(dbg, sizeof(dbg), "[BTN2] Mode → %s\r\n",
@@ -199,6 +223,7 @@ int main(void)
         }
     }
 }
+
 
 static void AutoMode_Process()
 {
@@ -280,11 +305,23 @@ static void AutoMode_Process()
   }
  
   /* Update TFT speed row */
-  TFT_UpdateSpeed();
+  if (g_wiper_speed != prev_speed) {
+    prev_speed = g_wiper_speed;
+    TFT_UpdateSpeed();
+  }
  
   /* Update TFT sensor data rows */
-  TFT_UpdateSensorData(avg_vib, ir_ch10, ir_ch11, rain_detected);
- 
+  if (rain_detected != prev_rain /*|| (prev_mode != g_auto_mode)*/ || (abs((int32_t)avg_vib - (int32_t)prev_vib) > VIB_CHANGE_THRESH) ||
+      (abs((int32_t)ir_ch10 - (int32_t)prev_ir0) > IR_CHANGE_THRESH) ||
+      (abs((int32_t)ir_ch11 - (int32_t)prev_ir1) > IR_CHANGE_THRESH))
+  {
+    prev_rain = rain_detected;
+    prev_vib  = avg_vib;
+    prev_ir0  = ir_ch10;
+    prev_ir1  = ir_ch11;
+    prev_mode = g_auto_mode;
+    TFT_UpdateSensorData(avg_vib, ir_ch10, ir_ch11, rain_detected);
+  }
   /* UART debug (every 100 auto iterations to avoid flooding) */
   static uint32_t auto_iter = 0;
   if (++auto_iter % 100 == 0)
@@ -372,12 +409,12 @@ static void TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir
  
   /* IR0 row */
   TFT_ClearRow(TFT_ROW_IR0);
-  snprintf(buf, sizeof(buf), "IR0  :%.3fV  ", ADC_ToVoltage(ir_ch10));
+  snprintf(buf, sizeof(buf), "IR0  :%.3fmV  ", ADC_ToVoltage(ir_ch10));
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
  
   /* IR1 row */
   TFT_ClearRow(TFT_ROW_IR1);
-  snprintf(buf, sizeof(buf), "IR1  :%.3fV  ", ADC_ToVoltage(ir_ch11));
+  snprintf(buf, sizeof(buf), "IR1  :%.3fmV  ", ADC_ToVoltage(ir_ch11));
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR1, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
 }
  
