@@ -44,6 +44,7 @@ ADC_HandleTypeDef hadc1; // IR adc
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart2;
 TIM_HandleTypeDef htim2;  // PWM timer
+TIM_HandleTypeDef htim3;  // PWM PB2
 
 
 
@@ -427,19 +428,33 @@ static float ADC_ToVoltage(uint16_t adc_val)
 static void PWM_Init(uint32_t freq_hz)
 {
   __HAL_RCC_TIM2_CLK_ENABLE();
+  __HAL_RCC_TIM3_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
  
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  GPIO_InitStruct.Pin       = GPIO_PIN_2 | GPIO_PIN_1; // PB1's power was working, ground not working
+  GPIO_InitStruct.Pin       = GPIO_PIN_2; 
   GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull      = GPIO_NOPULL;
   GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
  
+  // PB1 = TIM3_CH4
+  GPIO_InitStruct.Pin       = GPIO_PIN_1;
+  GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull      = GPIO_NOPULL;
+  GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+
   uint32_t pclk1    = HAL_RCC_GetPCLK1Freq();
   uint32_t prescaler = (pclk1 / 1000000U) - 1U;   /* 1 MHz timer clock */
   uint32_t period    = (1000000U / freq_hz) - 1U;
+
+  uint32_t pclk1b   = HAL_RCC_GetPCLK1Freq();
+  uint32_t prescaler3 = (pclk1b / 1000000U) - 1U;
+  uint32_t period3    = (1000000U / freq_hz) - 1U;
  
   htim2.Instance               = TIM2;
   htim2.Init.Prescaler         = prescaler;
@@ -447,18 +462,32 @@ static void PWM_Init(uint32_t freq_hz)
   htim2.Init.Period            = period;
   htim2.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
   HAL_TIM_PWM_Init(&htim2);
+
+  htim3.Instance           = TIM3;
+  htim3.Init.Prescaler     = prescaler3;
+  htim3.Init.CounterMode   = TIM_COUNTERMODE_UP;
+  htim3.Init.Period        = period3;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  HAL_TIM_PWM_Init(&htim3);
  
   TIM_OC_InitTypeDef sConfigOC = {0};
   sConfigOC.OCMode     = TIM_OCMODE_PWM1;
   sConfigOC.Pulse      = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+
+  TIM_OC_InitTypeDef sConfigOC3 = {0};
+  sConfigOC3.OCMode     = TIM_OCMODE_PWM1;
+  sConfigOC3.Pulse      = 0;
+  sConfigOC3.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC3.OCFastMode = TIM_OCFAST_DISABLE;
  
   HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2);
-  HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4);
- 
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
+
+
+  HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC3, TIM_CHANNEL_4);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
 }
  
 static void PWM_SetDuty(uint8_t channel, float duty_pct)
@@ -468,11 +497,14 @@ static void PWM_SetDuty(uint8_t channel, float duty_pct)
  
   uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim2);
   uint32_t pulse  = (uint32_t)((duty_pct / 100.0f) * (float)(period + 1U));
+
+  uint32_t period3 = __HAL_TIM_GET_AUTORELOAD(&htim3);
+  uint32_t pulse3  = (uint32_t)((duty_pct / 100.0f) * (float)(period3 + 1U));
  
   if (channel == 2)
     __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, pulse);
   else if (channel == 4)
-    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pulse);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, pulse3);
 }
  
 void PWM_SetFrequency(uint32_t freq_hz)
@@ -486,6 +518,16 @@ void PWM_SetFrequency(uint32_t freq_hz)
   __HAL_TIM_SET_AUTORELOAD(&htim2, period);
   __HAL_TIM_SET_COUNTER(&htim2, 0);
   __HAL_TIM_ENABLE(&htim2);
+
+  uint32_t pclk1b   = HAL_RCC_GetPCLK1Freq();
+  uint32_t prescaler3 = (pclk1b / 1000000U) - 1U;
+  uint32_t period3    = (1000000U / freq_hz) - 1U;
+
+  __HAL_TIM_DISABLE(&htim3);
+  __HAL_TIM_SET_PRESCALER(&htim3, prescaler3);
+  __HAL_TIM_SET_AUTORELOAD(&htim3, period3);
+  __HAL_TIM_SET_COUNTER(&htim3, 0);
+  __HAL_TIM_ENABLE(&htim3);
 }
  
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
