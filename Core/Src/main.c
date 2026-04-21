@@ -11,7 +11,7 @@
 #define NUM_MANUAL_SPEEDS 3
 
 #define IR_PWM_FREQ_HZ        10000
-#define IR_PWM_DUTY_PERCENT   10.0f
+#define IR_PWM_DUTY_PERCENT   20.0f
 
 #define VIB_SAMPLE_COUNT     10
 #define VIB_SAMPLE_DELAY_MS  5
@@ -66,8 +66,6 @@ volatile uint8_t prev_mode     = 255;  // invalid initial value to force TFT upd
 
 #define VIB_CHANGE_THRESH 100  // only update TFT if vib changes by this much to reduce flicker
 #define IR_CHANGE_THRESH 10   // only update TFT if IR changes by this much to reduce flicker
-
-
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -387,25 +385,16 @@ static void TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir
 {
   char buf[24];
  
-  /* RAIN row */
-  TFT_ClearRow(TFT_ROW_RAIN);
-  snprintf(buf, sizeof(buf), "RAIN : %s   ", rain_detected ? "YES" : "NO ");
-  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_RAIN, buf, Font_16x26, rain_detected ? ILI9341_RED : ILI9341_WHITE, ILI9341_BLACK);
- 
-  /* VIB row */
-  TFT_ClearRow(TFT_ROW_VIB);
-  snprintf(buf, sizeof(buf), "VIB  :%4lu %-8s", avg_vib, g_intensity);
-  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_VIB, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
- 
-  /* IR0 row */
-  TFT_ClearRow(TFT_ROW_IR0);
-  snprintf(buf, sizeof(buf), "IR0  :%.3fmV  ", ADC_ToVoltage(ir_ch10));
-  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
- 
-  /* IR1 row */
-  TFT_ClearRow(TFT_ROW_IR1);
-  snprintf(buf, sizeof(buf), "IR1  :%.3fmV  ", ADC_ToVoltage(ir_ch11));
-  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR1, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  snprintf(buf, sizeof(buf), "%s", rain_detected ? "YES" : "NO ");
+  snprintf(buf, sizeof(buf), "%4lu %-8s", avg_vib, g_intensity);
+  snprintf(buf, sizeof(buf), "%.3fmV", ADC_ToVoltage(ir_ch10));
+  snprintf(buf, sizeof(buf), "%.3fmV", ADC_ToVoltage(ir_ch11));
+
+  // print all at once
+  ILI9341_WriteString(100, TFT_ROW_RAIN, buf, Font_16x26, rain_detected ? ILI9341_RED : ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(100, TFT_ROW_VIB, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(100, TFT_ROW_IR0, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(100, TFT_ROW_IR1, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
 }
  
 static uint16_t ADC_ReadChannel(uint32_t channel)
