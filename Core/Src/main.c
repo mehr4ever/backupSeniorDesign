@@ -11,7 +11,7 @@
 #define NUM_MANUAL_SPEEDS 3
 
 #define IR_PWM_FREQ_HZ        10000
-#define IR_PWM_DUTY_PERCENT   20.0f
+#define IR_PWM_DUTY_PERCENT   5.0f
 
 #define VIB_SAMPLE_COUNT     10
 #define VIB_SAMPLE_DELAY_MS  5
@@ -19,9 +19,9 @@
 #define VIB_THRESH_LOW  500
 #define VIB_THRESH_MODERATE 1000
 
-#define IR_HIGH_THRESH 124 // change
-#define IR_MODERATE_THRESH 80 // change
-#define IR_LOW_THRESH 28 // change
+#define IR_HIGH_THRESH 120 // change
+#define IR_MODERATE_THRESH 85 // change
+#define IR_LOW_THRESH 50 // change
 
 
 #define BTN_DEBOUNCE_MS  200
@@ -65,7 +65,7 @@ static int     prev_speed    = -1;
 volatile uint8_t prev_mode     = 255;  // invalid initial value to force TFT update on first run
 
 #define VIB_CHANGE_THRESH 100  // only update TFT if vib changes by this much to reduce flicker
-#define IR_CHANGE_THRESH 10   // only update TFT if IR changes by this much to reduce flicker
+#define IR_CHANGE_THRESH 1   // only update TFT if IR changes by this much to reduce flicker
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -383,18 +383,21 @@ static void TFT_UpdateSpeed(void)
  
 static void TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir_ch11, int rain_detected)
 {
-  char buf[24];
+  char rain_buf[10];
+  char vib_buf[10];
+  char ir0_buf[11];
+  char ir1_buf[11];
  
-  snprintf(buf, sizeof(buf), "%s", rain_detected ? "YES" : "NO ");
-  snprintf(buf, sizeof(buf), "%4lu %-8s", avg_vib, g_intensity);
-  snprintf(buf, sizeof(buf), "%.3fmV", ADC_ToVoltage(ir_ch10));
-  snprintf(buf, sizeof(buf), "%.3fmV", ADC_ToVoltage(ir_ch11));
+  snprintf(rain_buf, sizeof(rain_buf), " %s", rain_detected ? "YES" : "NO ");
+  snprintf(vib_buf, sizeof(vib_buf), "%4lu", avg_vib);
+  snprintf(ir0_buf, sizeof(ir0_buf), " %.1fmV", ADC_ToVoltage(ir_ch10));
+  snprintf(ir1_buf, sizeof(ir1_buf), " %.1fmV", ADC_ToVoltage(ir_ch11));
 
   // print all at once
-  ILI9341_WriteString(100, TFT_ROW_RAIN, buf, Font_16x26, rain_detected ? ILI9341_RED : ILI9341_WHITE, ILI9341_BLACK);
-  ILI9341_WriteString(100, TFT_ROW_VIB, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-  ILI9341_WriteString(100, TFT_ROW_IR0, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-  ILI9341_WriteString(100, TFT_ROW_IR1, buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(100, TFT_ROW_RAIN, rain_buf, Font_16x26, rain_detected ? ILI9341_RED : ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(100, TFT_ROW_VIB, vib_buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(100, TFT_ROW_IR0, ir0_buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(100, TFT_ROW_IR1, ir1_buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
 }
  
 static uint16_t ADC_ReadChannel(uint32_t channel)
@@ -427,7 +430,7 @@ static void PWM_Init(uint32_t freq_hz)
   __HAL_RCC_GPIOB_CLK_ENABLE();
  
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  GPIO_InitStruct.Pin       = GPIO_PIN_2 | GPIO_PIN_3;
+  GPIO_InitStruct.Pin       = GPIO_PIN_2 | GPIO_PIN_1; // PB1's power was working, ground not working
   GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull      = GPIO_NOPULL;
   GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
