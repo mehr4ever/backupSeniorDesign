@@ -36,7 +36,6 @@
 #define TFT_ROW_RAIN    140
 #define TFT_ROW_VIB     170
 #define TFT_ROW_IR0     200
-#define TFT_ROW_IR1     230
 
 
 CAN_HandleTypeDef hcan1;
@@ -61,7 +60,6 @@ volatile uint32_t g_btn2_count   = 0;
 static int     prev_rain     = -1;
 static uint32_t prev_vib     = UINT32_MAX;
 static uint16_t prev_ir0     = UINT16_MAX;
-static uint16_t prev_ir1     = UINT16_MAX;
 static int     prev_speed    = -1;
 volatile uint8_t prev_mode     = 255;  // invalid initial value to force TFT update on first run
 
@@ -79,7 +77,7 @@ static void PWM_SetDuty(uint8_t channel, float duty_pct);
 static void     TFT_DrawInitialScreen(void);
 static void     TFT_UpdateMode(void);
 static void     TFT_UpdateSpeed(void);
-static void     TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir_ch11, int      rain_detected);
+static void     TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, int      rain_detected);
  
 static uint16_t ADC_ReadChannel(uint32_t channel);
 static uint16_t ADC_ReadPC0(void);
@@ -178,7 +176,6 @@ int main(void)
                 TFT_ClearRow((uint16_t)TFT_ROW_RAIN);
                 TFT_ClearRow((uint16_t)TFT_ROW_VIB);
                 TFT_ClearRow((uint16_t)TFT_ROW_IR0);
-                TFT_ClearRow((uint16_t)TFT_ROW_IR1);
                 strcpy(g_intensity, "Off");   // add thisi
                 if (g_wiper_speed != prev_speed) {
                   prev_speed = g_wiper_speed;
@@ -188,7 +185,6 @@ int main(void)
               prev_rain = -1;
               prev_vib  = UINT32_MAX;
               prev_ir0  = UINT16_MAX;
-              prev_ir1  = UINT16_MAX;
             }
             if (prev_mode != g_auto_mode) {
               prev_mode = g_auto_mode;  
@@ -232,14 +228,12 @@ static void AutoMode_Process()
  
   uint32_t total_vib = 0;
   uint32_t total_ir0 = 0;
-  uint32_t total_ir1 = 0;
   
   uint32_t avg_vib = 0;
-  uint32_t avg_IR1 = 0;
-  uint32_t avg_IR2 = 0;
   uint32_t avg_IR  = 0;
   uint32_t IR_speed = 0;
  
+  rain_detected=1;
   if (rain_detected)
   {
     for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
@@ -250,16 +244,12 @@ static void AutoMode_Process()
       
       // read IR readings
       total_ir0 += ADC_ReadPC0();
-      total_ir1 += ADC_ReadPC1();
-
       HAL_Delay(VIB_SAMPLE_DELAY_MS);
     }
 
     // calculate averages
     avg_vib = total_vib / VIB_SAMPLE_COUNT;
-    avg_IR1 = total_ir0 / VIB_SAMPLE_COUNT;
-    avg_IR2 = total_ir1 / VIB_SAMPLE_COUNT;
-    avg_IR  = (avg_IR1 + avg_IR2) / 2;
+    avg_IR = total_ir0 / VIB_SAMPLE_COUNT;
 
     if (avg_IR < IR_LOW_THRESH)           IR_speed = 3; // high
     else if (avg_IR < IR_MODERATE_THRESH) IR_speed = 2; // moderate
@@ -306,22 +296,20 @@ static void AutoMode_Process()
  
   if (rain_detected != prev_rain || 
       (abs((int32_t)avg_vib - (int32_t)prev_vib) > VIB_CHANGE_THRESH) ||
-      (abs((int32_t)avg_IR1 - (int32_t)prev_ir0) > IR_CHANGE_THRESH) ||
-      (abs((int32_t)avg_IR2 - (int32_t)prev_ir1) > IR_CHANGE_THRESH))
+      (abs((int32_t)avg_IR - (int32_t)prev_ir0) > IR_CHANGE_THRESH))
   {
     prev_rain = rain_detected;
     prev_vib  = avg_vib;
-    prev_ir0  = (uint16_t)avg_IR1;
-    prev_ir1  = (uint16_t)avg_IR2;
-    TFT_UpdateSensorData(avg_vib, (uint16_t)avg_IR1, (uint16_t)avg_IR2, rain_detected);
+    prev_ir0  = (uint16_t)avg_IR;
+    TFT_UpdateSensorData(avg_vib, (uint16_t)avg_IR, rain_detected);
   }
 
   static uint32_t auto_iter = 0;
   if (++auto_iter % 100 == 0)
   {
     char msg[180];
-    snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu | IR0:%lu | IR1:%lu | Spd:%d (%s)\r\n",
-                 rain_detected, avg_vib, avg_IR1, avg_IR2, g_wiper_speed, g_intensity);
+    snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu | IR:%lu | Spd:%d (%s)\r\n",
+                 rain_detected, avg_vib, avg_IR, g_wiper_speed, g_intensity);
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
   }
 }
@@ -357,8 +345,7 @@ static void TFT_DrawInitialScreen(void)
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_SPEED, "SPEED: OFF", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_RAIN, "RAIN : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_VIB, "VIB  : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0, "IR0  : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR1, "IR1  : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+  ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0, "IR   : ---", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
 }
  
 static void TFT_UpdateMode(void)
@@ -382,23 +369,20 @@ static void TFT_UpdateSpeed(void)
   ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_SPEED, buf, Font_16x26, ILI9341_YELLOW, ILI9341_BLACK);
 }
  
-static void TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, uint16_t ir_ch11, int rain_detected)
+static void TFT_UpdateSensorData(uint32_t avg_vib, uint16_t ir_ch10, int rain_detected)
 {
   char rain_buf[10];
   char vib_buf[10];
   char ir0_buf[11];
-  char ir1_buf[11];
  
   snprintf(rain_buf, sizeof(rain_buf), " %s", rain_detected ? "YES" : "NO ");
   snprintf(vib_buf, sizeof(vib_buf), "%4lu", avg_vib);
   snprintf(ir0_buf, sizeof(ir0_buf), " %.1fmV", ADC_ToVoltage(ir_ch10));
-  snprintf(ir1_buf, sizeof(ir1_buf), " %.1fmV", ADC_ToVoltage(ir_ch11));
 
   // print all at once
   ILI9341_WriteString(100, TFT_ROW_RAIN, rain_buf, Font_16x26, rain_detected ? ILI9341_RED : ILI9341_WHITE, ILI9341_BLACK);
   ILI9341_WriteString(100, TFT_ROW_VIB, vib_buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
   ILI9341_WriteString(100, TFT_ROW_IR0, ir0_buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
-  ILI9341_WriteString(100, TFT_ROW_IR1, ir1_buf, Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
 }
  
 static uint16_t ADC_ReadChannel(uint32_t channel)
