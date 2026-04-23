@@ -482,8 +482,8 @@ static void PWM_Init(uint32_t freq_hz)
   sConfigOC3.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC3.OCFastMode = TIM_OCFAST_DISABLE;
  
-  HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+  HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
 
   HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC3, TIM_CHANNEL_4);
@@ -502,7 +502,7 @@ static void PWM_SetDuty(uint8_t channel, float duty_pct)
   uint32_t pulse3  = (uint32_t)((duty_pct / 100.0f) * (float)(period3 + 1U));
  
   if (channel == 2)
-    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, pulse);
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, pulse);
   else if (channel == 4)
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, pulse3);
 }
