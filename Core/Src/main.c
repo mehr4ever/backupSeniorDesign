@@ -163,8 +163,8 @@ int main(void)
         char dbg[64];
         snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
         HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+      }
     }
-  }
 
 
     /* ── Button 3 (PA2): decrease manual speed ─────────────────────────── */
