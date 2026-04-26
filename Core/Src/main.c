@@ -143,8 +143,8 @@ int main(void)
  
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
       {
-        if(g_wiper_speed <= 2) {
-          g_wiper_speed = (g_wiper_speed + 1);
+        if(g_wiper_speed < 3) {
+          g_wiper_speed = (g_wiper_speed++);
         }
 
         // Keep g_intensity in sync with manual speed
@@ -155,7 +155,7 @@ int main(void)
             case 3:  strcpy(g_intensity, "High");     break;
         }
 
-        if ((g_wiper_speed != prev_speed || (prev_mode != g_auto_mode)) && (g_wiper_speed <= NUM_MANUAL_SPEEDS)) {
+        if (g_wiper_speed != prev_speed || prev_mode != g_auto_mode) {
           prev_speed = g_wiper_speed;
           TFT_UpdateSpeed();
         }
