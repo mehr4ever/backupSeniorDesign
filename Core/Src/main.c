@@ -742,9 +742,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
  
-  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pin = GPIO_PIN_8; // PA8 — speed up button
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
  
   GPIO_InitStruct.Pin = GPIO_PIN_10;
@@ -768,6 +766,8 @@ static void MX_GPIO_Init(void)
  
   HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+
 }
  
 void Error_Handler(void)
