@@ -172,7 +172,7 @@ int main(void)
  
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
       {
-        if(g_wiper_speed >= 1)
+        if(g_wiper_speed >= 1) {
           g_wiper_speed = (g_wiper_speed - 1);
         }
 
@@ -248,7 +248,7 @@ int main(void)
             strncpy((char*)&TxData[2], g_intensity, 5);
             CAN_TrySend(&TxHeader, TxData);
         }
-    }
+    
 }
 
 
@@ -570,6 +570,17 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
       prev_tick = now;
     }
   }
+  else if (GPIO_Pin == GPIO_PIN_2)    /* PA2 — speed down button */
+  {
+    static uint32_t prev_tick = 0;
+    uint32_t now = HAL_GetTick();
+    if (now - prev_tick > BTN_DEBOUNCE_MS)
+    {
+      g_btn3_count++;
+      g_btn3_pressed = 1;
+      prev_tick = now;
+    }
+  }
 }
  
 
@@ -724,6 +735,8 @@ static void MX_GPIO_Init(void)
  
   GPIO_InitStruct.Pin = GPIO_PIN_5;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);        /* PB5  — rain sensor DO */
+
+
  
   /* ── EXTI: PA8 (button 1) and PB10 (button 2) ───────────────────────── */
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
@@ -736,6 +749,9 @@ static void MX_GPIO_Init(void)
  
   GPIO_InitStruct.Pin = GPIO_PIN_10;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);        /* PB10 — mode button  */
+
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);        /* Pa2 — down  */
  
   /* ── Analog: PC0, PC1 — IR receiver ADC inputs ───────────────────────── */
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
