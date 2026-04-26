@@ -143,7 +143,9 @@ int main(void)
  
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
       {
-        g_wiper_speed = (g_wiper_speed + 1) % (NUM_MANUAL_SPEEDS + 1);
+        if(g_wiper_speed <= 2)
+          g_wiper_speed = (g_wiper_speed + 1);
+        }
 
         // Keep g_intensity in sync with manual speed
         switch (g_wiper_speed) {
