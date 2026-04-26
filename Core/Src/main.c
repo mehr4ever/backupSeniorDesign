@@ -53,9 +53,11 @@ char             g_intensity[16] = "Off";
 volatile uint8_t g_auto_mode     = 0;
 volatile uint32_t g_iteration    = 0;
 volatile uint8_t  g_btn1_pressed = 0;   
-volatile uint8_t  g_btn2_pressed = 0;   
+volatile uint8_t  g_btn2_pressed = 0;
+volatile uint8_t  g_btn3_pressed = 0;
 volatile uint32_t g_btn1_count   = 0;   
 volatile uint32_t g_btn2_count   = 0;
+volatile uint32_t g_btn3_count   = 0;
 
 static int     prev_rain     = -1;
 static uint32_t prev_vib     = UINT32_MAX;
@@ -134,8 +136,8 @@ int main(void)
   
   while (1) {
     g_iteration++;
- 
-    /* ── Button 1 (PA8): step manual speed ─────────────────────────── */
+
+   /* ── Button 1 (PA8): increase manual speed ─────────────────────────── */
     if (g_btn1_pressed) {
       g_btn1_pressed = 0;
  
@@ -151,7 +153,7 @@ int main(void)
             case 3:  strcpy(g_intensity, "High");     break;
         }
 
-        if (g_wiper_speed != prev_speed || (prev_mode != g_auto_mode)) {
+        if ((g_wiper_speed != prev_speed || (prev_mode != g_auto_mode)) && (g_wiper_speed <= NUM_MANUAL_SPEEDS)) {
           prev_speed = g_wiper_speed;
           TFT_UpdateSpeed();
         }
@@ -162,7 +164,35 @@ int main(void)
       }
     }
 
+    /* ── Button 3 (PA2): decrease manual speed ─────────────────────────── */
+    if (g_btn3_pressed) {
+      g_btn3_pressed = 0;
  
+      if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
+      {
+        if(g_wiper_speed >= 1)
+          g_wiper_speed = (g_wiper_speed - 1);
+        }
+
+        // Keep g_intensity in sync with manual speed
+        switch (g_wiper_speed) {
+            case 0:  strcpy(g_intensity, "Off");      break;
+            case 1:  strcpy(g_intensity, "Low");      break;
+            case 2:  strcpy(g_intensity, "Moderate"); break;
+            case 3:  strcpy(g_intensity, "High");     break;
+        }
+
+        if ((g_wiper_speed != prev_speed || (prev_mode != g_auto_mode)) && (g_wiper_speed >= 0)) {
+          prev_speed = g_wiper_speed;
+          TFT_UpdateSpeed();
+        }
+ 
+        char dbg[64];
+        snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
+        HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+      }
+    }
+
     /* ── Button 2 (PB10): toggle AUTO / MANUAL ──────────────────────── */
     if (g_btn2_pressed) {
             g_btn2_pressed = 0;
@@ -697,8 +727,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
  
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);        /* PA8  — speed button */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
  
   GPIO_InitStruct.Pin = GPIO_PIN_10;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);        /* PB10 — mode button  */
@@ -715,6 +747,9 @@ static void MX_GPIO_Init(void)
  
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+ 
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 }
  
 void Error_Handler(void)
