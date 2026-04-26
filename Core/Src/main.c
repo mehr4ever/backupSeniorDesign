@@ -143,7 +143,7 @@ int main(void)
  
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
       {
-        if(g_wiper_speed <= 2)
+        if(g_wiper_speed <= 2) {
           g_wiper_speed = (g_wiper_speed + 1);
         }
 
@@ -163,8 +163,9 @@ int main(void)
         char dbg[64];
         snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
         HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
-      }
     }
+  }
+
 
     /* ── Button 3 (PA2): decrease manual speed ─────────────────────────── */
     if (g_btn3_pressed) {
@@ -248,7 +249,7 @@ int main(void)
             strncpy((char*)&TxData[2], g_intensity, 5);
             CAN_TrySend(&TxHeader, TxData);
         }
-    
+      }
 }
 
 
@@ -744,10 +745,14 @@ static void MX_GPIO_Init(void)
  
   GPIO_InitStruct.Pin = GPIO_PIN_8; // PA8 — speed up button
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
- 
+
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Pin = GPIO_PIN_10;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);        /* PB10 — mode button  */
 
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Pin = GPIO_PIN_2;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);        /* Pa2 — down  */
  
@@ -763,11 +768,12 @@ static void MX_GPIO_Init(void)
  
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
- 
+
+  
+
+  // priority for down button
   HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
-
-
 }
  
 void Error_Handler(void)
