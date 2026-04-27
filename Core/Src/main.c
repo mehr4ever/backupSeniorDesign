@@ -41,7 +41,7 @@
 CAN_HandleTypeDef hcan1;
 ADC_HandleTypeDef hadc1; // IR adc
 SPI_HandleTypeDef hspi1;
-UART_HandleTypeDef huart2;
+//UART_HandleTypeDef huart2;
 TIM_HandleTypeDef htim2;  // PWM timer
 TIM_HandleTypeDef htim3;  // PWM PB2
 
@@ -71,7 +71,7 @@ volatile uint8_t prev_mode     = 255;  // invalid initial value to force TFT upd
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
-static void MX_USART2_UART_Init(void);
+//static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_CAN1_Init(void);
 static void PWM_Init(uint32_t freq_hz);
@@ -98,7 +98,7 @@ int main(void)
 
   MX_GPIO_Init();
   MX_ADC1_Init();
-  MX_USART2_UART_Init();
+  //MX_USART2_UART_Init();
   MX_SPI1_Init();
   MX_CAN1_Init();
 
@@ -144,7 +144,7 @@ int main(void)
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
       {
         if(g_wiper_speed < 3) {
-          g_wiper_speed = (g_wiper_speed++);
+          g_wiper_speed = g_wiper_speed + 1;
         }
 
         // Keep g_intensity in sync with manual speed
@@ -160,9 +160,9 @@ int main(void)
           TFT_UpdateSpeed();
         }
  
-        char dbg[64];
-        snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
-        HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+       // char dbg[64];
+        //snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
+        //HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
       }
     }
 
@@ -192,7 +192,7 @@ int main(void)
  
         char dbg[64];
         snprintf(dbg, sizeof(dbg), "[BTN1] Manual speed → %d\r\n", g_wiper_speed);
-        HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+        //HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
       }
     }
 
@@ -215,6 +215,10 @@ int main(void)
                   TFT_UpdateSpeed();
                 }
             } else {
+              ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_RAIN, "RAIN :", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+              ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_VIB,  "VIB  :", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+              ILI9341_WriteString(TFT_COL_LEFT, TFT_ROW_IR0,  "IR   :", Font_16x26, ILI9341_WHITE, ILI9341_BLACK);
+
               prev_rain = -1;
               prev_vib  = UINT32_MAX;
               prev_ir0  = UINT16_MAX;
@@ -228,7 +232,7 @@ int main(void)
             char dbg[64];
             snprintf(dbg, sizeof(dbg), "[BTN2] Mode → %s\r\n",
                      g_auto_mode ? "AUTO" : "MANUAL");
-            HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+            //HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
         }
  
         /* ── Automatic mode: sensor processing ──────────────────────────── */
@@ -266,7 +270,7 @@ static void AutoMode_Process()
   uint32_t avg_IR  = 0;
   uint32_t IR_speed = 0;
  
-  rain_detected=1;
+  //rain_detected=1;
   if (rain_detected)
   {
     for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
@@ -343,7 +347,7 @@ static void AutoMode_Process()
     char msg[180];
     snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu | IR:%lu | Spd:%d (%s)\r\n",
                  rain_detected, avg_vib, avg_IR, g_wiper_speed, g_intensity);
-    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
+    //HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
   }
 }
 
@@ -353,13 +357,13 @@ static void CAN_TrySend(CAN_TxHeaderTypeDef *hdr, uint8_t *data)
   if (HAL_CAN_AddTxMessage(&hcan1, hdr, data, &mailbox) != HAL_OK)
   {
     const char *err = "[CAN] TX mailbox full or error\r\n";
-    HAL_UART_Transmit(&huart2, (uint8_t*)err, strlen(err), 100);
+    //HAL_UART_Transmit(&huart2, (uint8_t*)err, strlen(err), 100);
   }
   else
   {
     char dbg[80];
     snprintf(dbg, sizeof(dbg), "[CAN] TX → speed=%d mode=%s intensity=%s\r\n",g_wiper_speed, g_auto_mode ? "AUTO" : "MANUAL", g_intensity);
-    HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
+    //HAL_UART_Transmit(&huart2, (uint8_t*)dbg, strlen(dbg), 100);
   }
 }
  
@@ -555,9 +559,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     uint32_t now = HAL_GetTick();
     if (now - prev_tick > BTN_DEBOUNCE_MS)
     {
-      g_btn1_count++;
-      g_btn1_pressed = 1;
-      prev_tick = now;
+      // Only register if pin is actually low (real press, not noise)
+      if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_8) == GPIO_PIN_RESET)
+      {
+        g_btn1_count++;
+        g_btn1_pressed = 1;
+        prev_tick = now;
+      }
     }
   }
   else if (GPIO_Pin == GPIO_PIN_10)   /* PB10 — mode button */
@@ -566,9 +574,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     uint32_t now = HAL_GetTick();
     if (now - prev_tick > BTN_DEBOUNCE_MS)
     {
-      g_btn2_count++;
-      g_btn2_pressed = 1;
-      prev_tick = now;
+      // Only register if pin is actually low (real press, not noise)
+      if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_10) == GPIO_PIN_RESET)
+      {
+        g_btn2_count++;
+        g_btn2_pressed = 1;
+        prev_tick = now;
+      }
     }
   }
   else if (GPIO_Pin == GPIO_PIN_2)    /* PA2 — speed down button */
@@ -577,9 +589,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     uint32_t now = HAL_GetTick();
     if (now - prev_tick > BTN_DEBOUNCE_MS)
     {
-      g_btn3_count++;
-      g_btn3_pressed = 1;
-      prev_tick = now;
+      // Only register if pin is actually low (real press, not noise)
+      if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == GPIO_PIN_RESET)
+      {
+        g_btn3_count++;
+        g_btn3_pressed = 1;
+        prev_tick = now;
+      }
     }
   }
 }
@@ -685,18 +701,18 @@ static void MX_SPI1_Init(void)
   if (HAL_SPI_Init(&hspi1) != HAL_OK) Error_Handler();
 }
  
-static void MX_USART2_UART_Init(void)
-{
-  huart2.Instance          = USART2;
-  huart2.Init.BaudRate     = 115200;
-  huart2.Init.WordLength   = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits     = UART_STOPBITS_1;
-  huart2.Init.Parity       = UART_PARITY_NONE;
-  huart2.Init.Mode         = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK) Error_Handler();
-}
+// static void MX_USART2_UART_Init(void)
+// {
+//   huart2.Instance          = USART2;
+//   huart2.Init.BaudRate     = 115200;
+//   huart2.Init.WordLength   = UART_WORDLENGTH_8B;
+//   huart2.Init.StopBits     = UART_STOPBITS_1;
+//   huart2.Init.Parity       = UART_PARITY_NONE;
+//   huart2.Init.Mode         = UART_MODE_TX_RX;
+//   huart2.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
+//   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+//   if (HAL_UART_Init(&huart2) != HAL_OK) Error_Handler();
+// }
  
 static void MX_GPIO_Init(void)
 {
