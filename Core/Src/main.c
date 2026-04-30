@@ -325,6 +325,10 @@ static void AutoMode_Process()
     }
  
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   // rain LED on
+    if (g_wiper_speed != prev_speed) { // update tft speed
+      prev_speed = g_wiper_speed;
+      TFT_UpdateSpeed();
+    }
   }
   else
   {
