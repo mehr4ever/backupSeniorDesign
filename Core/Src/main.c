@@ -263,8 +263,11 @@ static void AutoMode_Process()
   GPIO_PinState rain_pin2 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);
   int rain_detected = (rain_pin1 == GPIO_PIN_RESET) || (rain_pin2 == GPIO_PIN_RESET);
  
-  uint32_t total_vib = 0;
+  uint32_t total_vib1 = 0;
+  uint32_t total_vib2 = 0;
   uint32_t total_ir0 = 0;
+
+  uint32_t min_vib = 0;
   
   uint32_t avg_vib = 0;
   uint32_t avg_IR  = 0;
@@ -275,17 +278,20 @@ static void AutoMode_Process()
   {
     for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
     {
-      // read Vibration from PA0 (Channel 0)
-      // TODO: ADD OTHER VIBRATION READING
-      total_vib += ADC_ReadChannel(ADC_CHANNEL_0);
+      // read vibration from PA0 (Channel 0) and PA1 (Channel 1)
+      total_vib1 += ADC_ReadChannel(ADC_CHANNEL_0);
+      total_vib2 += ADC_ReadChannel(ADC_CHANNEL_1);
       
       // read IR readings
       total_ir0 += ADC_ReadPC0();
       HAL_Delay(VIB_SAMPLE_DELAY_MS);
     }
 
+    // get minimum vib in case one part of windshield is more affected than other
+    min_vib = (total_vib1 < total_vib2) ? total_vib1 : total_vib2;
+
     // calculate averages
-    avg_vib = total_vib / VIB_SAMPLE_COUNT;
+    avg_vib = min_vib / VIB_SAMPLE_COUNT;
     avg_IR = total_ir0 / VIB_SAMPLE_COUNT;
 
     if (avg_IR < IR_LOW_THRESH)           IR_speed = 3; // high
