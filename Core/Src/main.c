@@ -19,7 +19,7 @@
 #define VIB_THRESH_LOW  500
 #define VIB_THRESH_MODERATE 1000
 
-#define IR_HIGH_THRESH 120 // change
+#define IR_HIGH_THRESH 110 // change
 #define IR_MODERATE_THRESH 85 // change
 #define IR_LOW_THRESH 50 // change
 
@@ -273,11 +273,8 @@ static void AutoMode_Process()
   uint32_t avg_IR  = 0;
   uint32_t IR_speed = 0;
  
-  //rain_detected=1; // for testing only
-  if (rain_detected)
+  for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
   {
-    for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
-    {
       // read vibration from PA0 (Channel 0) and PA1 (Channel 1)
       total_vib1 += ADC_ReadChannel(ADC_CHANNEL_0);
       total_vib2 += ADC_ReadChannel(ADC_CHANNEL_1);
@@ -285,15 +282,19 @@ static void AutoMode_Process()
       // read IR readings
       total_ir0 += ADC_ReadPC0();
       HAL_Delay(VIB_SAMPLE_DELAY_MS);
-    }
+  }
 
-    // get minimum vib in case one part of windshield is more affected than other
-    max_vib = (total_vib1 > total_vib2) ? total_vib1 : total_vib2;
+  // get minimum vib in case one part of windshield is more affected than other
+  max_vib = (total_vib1 > total_vib2) ? total_vib1 : total_vib2;
 
     // calculate averages
-    avg_vib = max_vib / VIB_SAMPLE_COUNT;
-    avg_IR = total_ir0 / VIB_SAMPLE_COUNT;
+  avg_vib = max_vib / VIB_SAMPLE_COUNT;
+  avg_IR = total_ir0 / VIB_SAMPLE_COUNT;
 
+  //rain_detected=1; // for testing only
+  if (rain_detected)
+  {
+    
     if (avg_IR < IR_LOW_THRESH)           IR_speed = 3; // high
     else if (avg_IR < IR_MODERATE_THRESH) IR_speed = 2; // moderate
     else if (avg_IR < IR_HIGH_THRESH)     IR_speed = 1; // low
@@ -337,7 +338,7 @@ static void AutoMode_Process()
     TFT_UpdateSpeed();
   }
  
-  if (rain_detected != prev_rain || 
+  if (/*rain_detected != prev_rain || */
       (abs((int32_t)avg_vib - (int32_t)prev_vib) > VIB_CHANGE_THRESH) ||
       (abs((int32_t)avg_IR - (int32_t)prev_ir0) > IR_CHANGE_THRESH))
   {
