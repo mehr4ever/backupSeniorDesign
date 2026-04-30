@@ -222,6 +222,7 @@ int main(void)
               prev_rain = -1;
               prev_vib  = UINT32_MAX;
               prev_ir0  = UINT16_MAX;
+              prev_speed = -1; // reset prev_speed to force TFT update when switching back to AUTO
             }
             if (prev_mode != g_auto_mode) {
               prev_mode = g_auto_mode;  
@@ -335,11 +336,6 @@ static void AutoMode_Process()
     strcpy(g_intensity, "Off");
     g_wiper_speed = 0;
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); // rain LED off
-  }
- 
-  if (g_wiper_speed != prev_speed) {
-    prev_speed = g_wiper_speed;
-    TFT_UpdateSpeed();
   }
  
   if (/*rain_detected != prev_rain || */
