@@ -65,7 +65,7 @@ static uint16_t prev_ir0     = UINT16_MAX;
 static int     prev_speed    = -1;
 volatile uint8_t prev_mode     = 255;  // invalid initial value to force TFT update on first run
 
-#define VIB_CHANGE_THRESH 100  // only update TFT if vib changes by this much to reduce flicker
+#define VIB_CHANGE_THRESH 1  // only update TFT if vib changes by this much to reduce flicker
 #define IR_CHANGE_THRESH 1   // only update TFT if IR changes by this much to reduce flicker
 
 void SystemClock_Config(void);
@@ -138,8 +138,8 @@ int main(void)
     g_iteration++;
 
    /* ── Button 1 (PA8): increase manual speed ─────────────────────────── */
-    if (g_btn1_pressed) {
-      g_btn1_pressed = 0;
+    if (g_btn3_pressed) {
+      g_btn3_pressed = 0;
  
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
       {
@@ -168,8 +168,8 @@ int main(void)
 
 
     /* ── Button 3 (PA2): decrease manual speed ─────────────────────────── */
-    if (g_btn3_pressed) {
-      g_btn3_pressed = 0;
+    if (g_btn1_pressed) {
+      g_btn1_pressed = 0;
  
       if (!g_auto_mode)   /* only allow manual speed change in MANUAL mode */
       {
@@ -267,13 +267,13 @@ static void AutoMode_Process()
   uint32_t total_vib2 = 0;
   uint32_t total_ir0 = 0;
 
-  uint32_t min_vib = 0;
+  uint32_t max_vib = 0;
   
   uint32_t avg_vib = 0;
   uint32_t avg_IR  = 0;
   uint32_t IR_speed = 0;
  
-  //rain_detected=1;
+  //rain_detected=1; // for testing only
   if (rain_detected)
   {
     for (int i = 0; i < VIB_SAMPLE_COUNT; i++)
@@ -288,10 +288,10 @@ static void AutoMode_Process()
     }
 
     // get minimum vib in case one part of windshield is more affected than other
-    min_vib = (total_vib1 < total_vib2) ? total_vib1 : total_vib2;
+    max_vib = (total_vib1 > total_vib2) ? total_vib1 : total_vib2;
 
     // calculate averages
-    avg_vib = min_vib / VIB_SAMPLE_COUNT;
+    avg_vib = max_vib / VIB_SAMPLE_COUNT;
     avg_IR = total_ir0 / VIB_SAMPLE_COUNT;
 
     if (avg_IR < IR_LOW_THRESH)           IR_speed = 3; // high
