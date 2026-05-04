@@ -285,7 +285,7 @@ static void AutoMode_Process()
       HAL_Delay(VIB_SAMPLE_DELAY_MS);
   }
 
-  // get minimum vib in case one part of windshield is more affected than other
+  // get maximum vib in case one part of windshield is more affected than other
   max_vib = (total_vib1 > total_vib2) ? total_vib1 : total_vib2;
 
     // calculate averages
@@ -338,7 +338,7 @@ static void AutoMode_Process()
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); // rain LED off
   }
  
-  if (/*rain_detected != prev_rain || */
+  if (
       (abs((int32_t)avg_vib - (int32_t)prev_vib) > VIB_CHANGE_THRESH) ||
       (abs((int32_t)avg_IR - (int32_t)prev_ir0) > IR_CHANGE_THRESH))
   {
@@ -354,7 +354,6 @@ static void AutoMode_Process()
     char msg[180];
     snprintf(msg, sizeof(msg), "[AUTO] Rain:%d | Vib:%lu | IR:%lu | Spd:%d (%s)\r\n",
                  rain_detected, avg_vib, avg_IR, g_wiper_speed, g_intensity);
-    //HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 200);
   }
 }
 
